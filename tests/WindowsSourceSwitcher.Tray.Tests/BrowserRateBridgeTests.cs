@@ -202,6 +202,8 @@ public sealed class BrowserRateBridgeTests
         await Reply(original, oldRequest, 1);
         var playing = await WaitFor(bridge, snapshot => snapshot.State == BrowserDecoderState.Available);
         await bridge.StopAsync();
+        // The native host releases the old instance before connecting to its replacement.
+        original.Dispose();
         await bridge.StartAsync();
         using var restarted = await Connect(name);
         var newRequest = await Request(restarted);

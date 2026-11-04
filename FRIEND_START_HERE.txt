@@ -27,7 +27,8 @@ and ASIO are outside the shared Windows mixer. The output device and driver
 determine which shared rates are available. This build is unsigned.
 
 Settings > Rate detection has an optional Follow source bit depth checkbox.
-It uses observed 16-, 24-, or 32-bit PCM or 32-bit float. With Apple Music
+It uses observed 16-, 24-, or 32-bit integer PCM. Float streams supply
+their sample rate while Auto retains the current depth. With Apple Music
 catalog estimates enabled, it uses that track estimate's bit depth.
 When depth is unknown or the checkbox is off, the app keeps the current depth.
 Use Master bit depth in Sources to save a depth for the current master. Spotify

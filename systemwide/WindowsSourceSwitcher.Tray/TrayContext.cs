@@ -1600,7 +1600,7 @@ internal sealed class TrayContext : ApplicationContext
             if (result.SampleRateHz is { } rate)
                 current[source.Identity] = new(source.Identity, source.SessionToken, _settings.SelectionRevision,
                     rate, RateProvenance.WasapiStream, "Windows ETW observed the application's submitted shared PCM format. Original media may differ.",
-                    result.PcmBitsPerSample);
+                    result.PcmBitsPerSample, result.UsesFloatPcm);
         }
         _streamObservations = current;
     }
@@ -1746,7 +1746,8 @@ internal sealed class TrayContext : ApplicationContext
             new("Confidence", confidence),
             new("Original media", _browserObservation?.SampleRateHz is { } decoded ? SourcePopup.FormatRate(decoded) + " chosen tab decoder; app routing unverified" : "Unknown; submitted PCM does not establish content rate"),
             new("Submitted PCM", streamRate is { } rate
-                ? SourcePopup.FormatRate(rate) + (stream?.BitsPerSample is { } bits ? $" · {bits}-bit stream" : "")
+                ? SourcePopup.FormatRate(rate) + (stream?.BitsPerSample is { } bits
+                    ? $" · {bits}-bit " + (stream.UsesFloatPcm ? "float" : "integer") : "")
                 : "Not observed"),
             new("Follow bit depth", _settings.FollowSourceBitDepth
                 ? _lastDecision?.DesiredBitsPerSample is { } wantedBits

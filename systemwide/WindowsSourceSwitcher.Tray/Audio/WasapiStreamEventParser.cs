@@ -5,7 +5,8 @@ namespace WindowsSourceSwitcher.Tray.Audio;
 internal enum StreamSignalKind { Initialize, Start, Stop }
 
 internal sealed record StreamSignal(StreamSignalKind Kind, int ProcessId, Guid ClientId,
-    DateTimeOffset TimestampUtc, string? EndpointId = null, int? SampleRateHz = null, int? PcmBitsPerSample = null);
+    DateTimeOffset TimestampUtc, string? EndpointId = null, int? SampleRateHz = null, int? PcmBitsPerSample = null,
+    bool UsesFloatPcm = false);
 
 /// <summary>Fail closed on unrecognized trace schemas. Field names were verified in a live Windows 11 capture.</summary>
 internal static class WasapiStreamEventParser
@@ -38,7 +39,7 @@ internal static class WasapiStreamEventParser
             return null;
         var bits = TryNumber(values, "ValidBitsPerSample", out var validBits)
             ? AudioServiceStreamEventParser.GetPcmWidth(format, validBits) : null;
-        return new(StreamSignalKind.Initialize, processId, clientId, timestampUtc, endpointId, (int)rate, bits);
+        return new(StreamSignalKind.Initialize, processId, clientId, timestampUtc, endpointId, (int)rate, bits, format == Float);
     }
 
     private static bool TryNumber(IReadOnlyDictionary<string, object?> values, string name, out long number)

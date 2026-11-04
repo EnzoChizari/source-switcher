@@ -44,6 +44,7 @@ public sealed class WasapiStreamEventParserTests
         var signal = Parse(values);
         Assert.NotNull(signal);
         Assert.Equal(expected, signal.PcmBitsPerSample);
+        Assert.Equal(!integer, signal.UsesFloatPcm);
     }
 
     [Theory]

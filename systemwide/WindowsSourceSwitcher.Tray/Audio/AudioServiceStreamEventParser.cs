@@ -9,6 +9,7 @@ internal sealed record AudioServiceStreamState(
     Guid SubFormat, uint StreamFlags, bool IsRunning, DateTimeOffset TimestampUtc)
 {
     public int? PcmBitsPerSample => AudioServiceStreamEventParser.GetPcmWidth(SubFormat, ValidBitsPerSample);
+    public bool UsesFloatPcm => SubFormat == AudioServiceStreamEventParser.Float;
 }
 
 /// <summary>
@@ -22,7 +23,7 @@ internal static class AudioServiceStreamEventParser
 {
     public static readonly Guid ProviderId = new("3d2b6366-47a4-5e10-6974-e5f7de0d3f28");
     private static readonly Guid Pcm = new("00000001-0000-0010-8000-00aa00389b71");
-    private static readonly Guid Float = new("00000003-0000-0010-8000-00aa00389b71");
+    internal static readonly Guid Float = new("00000003-0000-0010-8000-00aa00389b71");
 
     // Float32 describes the stream's sample representation, not the original asset precision.
     internal static int? GetPcmWidth(Guid subFormat, long bits) =>

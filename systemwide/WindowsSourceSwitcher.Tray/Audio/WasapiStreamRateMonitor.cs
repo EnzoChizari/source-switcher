@@ -241,7 +241,8 @@ internal sealed class WasapiStreamRateMonitor : IAsyncDisposable
                 {
                     if (_disposed) return;
                     var initialized = _tracker.Initialize(new(signal.ProcessId, process.Identity.StartedAtUtc, signal.ClientId,
-                        signal.EndpointId!, signal.SampleRateHz!.Value, signal.TimestampUtc, signal.PcmBitsPerSample));
+                        signal.EndpointId!, signal.SampleRateHz!.Value, signal.TimestampUtc, signal.PcmBitsPerSample,
+                        signal.UsesFloatPcm));
                     changed |= initialized;
                     if (initialized) { _lastEventTimeUtc = signal.TimestampUtc; _version++; _error = null; }
                 }
@@ -319,13 +320,14 @@ internal sealed class WasapiStreamRateMonitor : IAsyncDisposable
             && processes.Any(process => process.ProcessId == stream.SourceProcessId
                 && process.StartedAtUtc <= stream.TimestampUtc)
             && (sessionInstanceIds is null || sessionInstanceIds.Contains(stream.SessionInstanceId, StringComparer.Ordinal)))
-            .Select(stream => (stream.SampleRateHz, stream.PcmBitsPerSample)).Distinct().ToArray();
+            .Select(stream => (stream.SampleRateHz, stream.PcmBitsPerSample, stream.UsesFloatPcm)).Distinct().ToArray();
         var rates = formats.Select(format => format.SampleRateHz).Distinct().Take(2).ToArray();
         return rates.Length switch
         {
             0 => new(null, "No running shared PCM stream in the current Windows Audio Service census."),
             1 => new(rates[0], "Current Windows Audio Service stream format; already-open streams are included.",
-                formats.Length == 1 ? formats[0].PcmBitsPerSample : null),
+                formats.Length == 1 ? formats[0].PcmBitsPerSample : null,
+                formats.Length == 1 && formats[0].UsesFloatPcm),
             _ => new(null, "Playing streams use conflicting rates; retaining the current output rate.")
         };
     }

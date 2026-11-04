@@ -22,7 +22,8 @@ public sealed record RateObservation(
     int? SampleRateHz,
     RateProvenance Provenance,
     string Detail,
-    int? BitsPerSample = null);
+    int? BitsPerSample = null,
+    bool UsesFloatPcm = false);
 
 public enum RateDecisionReason
 {
@@ -134,9 +135,12 @@ public static class SampleRatePolicy
             return new(held, RateDecisionReason.ConflictingObservations, "Selected app has different simultaneous stream rates; retaining its last confirmed rate.");
         if (streamRates.Length == 1)
         {
-            var bits = settings.FollowSourceBitDepth ? AgreeOnBitDepth(streams) : null;
+            var usesFloat = streams.Any(observation => observation.UsesFloatPcm);
+            var bits = settings.FollowSourceBitDepth && !usesFloat ? AgreeOnBitDepth(streams) : null;
             var spotifyWidth = bits == 32 && source.ExecutablePath.Replace('/', '\\').EndsWith("\\Spotify.exe", StringComparison.OrdinalIgnoreCase);
-            var detail = spotifyWidth && depthOverride.Key is null
+            var detail = settings.FollowSourceBitDepth && usesFloat && depthOverride.Key is null
+                ? "Following the submitted sample rate. The floating-point stream leaves track depth unknown. Choose a master bit depth if known."
+                : spotifyWidth && depthOverride.Key is null
                 ? "Following Spotify's Windows stream rate. Its 32-bit stream does not establish the track's depth. Choose a master bit-depth override if known."
                 : "Following the selected app's observed WASAPI PCM stream rate; the app may have resampled its original media.";
             return WithDepth(new(streamRates[0], RateDecisionReason.WasapiStream, detail), spotifyWidth ? null : bits);

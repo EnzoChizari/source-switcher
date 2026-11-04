@@ -9,9 +9,10 @@ public sealed record AudioStreamFormat(
     string EndpointId,
     int SampleRateHz,
     DateTimeOffset ObservedAtUtc,
-    int? PcmBitsPerSample = null);
+    int? PcmBitsPerSample = null,
+    bool UsesFloatPcm = false);
 
-public sealed record StreamRateResult(int? SampleRateHz, string Detail, int? PcmBitsPerSample = null);
+public sealed record StreamRateResult(int? SampleRateHz, string Detail, int? PcmBitsPerSample = null, bool UsesFloatPcm = false);
 
 /// <summary>
 /// Tracks observed render-client formats, not the format of the encoded media.
@@ -87,7 +88,7 @@ public sealed class StreamRateTracker
             .Where(stream => stream.IsPlaying
                 && string.Equals(stream.Format.EndpointId, endpointId, StringComparison.OrdinalIgnoreCase)
                 && processIdentities.Contains((stream.Format.ProcessId, stream.Format.ProcessStartedAtUtc)))
-            .Select(stream => (stream.Format.SampleRateHz, stream.Format.PcmBitsPerSample))
+            .Select(stream => (stream.Format.SampleRateHz, stream.Format.PcmBitsPerSample, stream.Format.UsesFloatPcm))
             .Distinct()
             .ToArray();
         var rates = formats.Select(format => format.SampleRateHz).Distinct().Take(2).ToArray();
@@ -96,7 +97,8 @@ public sealed class StreamRateTracker
         {
             0 => new(null, "No playing stream with an observed format for this source and output."),
             1 => new(rates[0], "Observed playing Windows audio-client stream rate.",
-                formats.Length == 1 ? formats[0].PcmBitsPerSample : null),
+                formats.Length == 1 ? formats[0].PcmBitsPerSample : null,
+                formats.Length == 1 && formats[0].UsesFloatPcm),
             _ => new(null, "Playing streams use conflicting rates; retaining the current output rate.")
         };
     }

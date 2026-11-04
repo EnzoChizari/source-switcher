@@ -61,6 +61,27 @@ public sealed class SampleRatePolicyTests
         Assert.Null(SampleRatePolicy.Evaluate(settings, [source], [stream]).DesiredBitsPerSample);
     }
 
+    [Theory]
+    [InlineData("fooyin")]
+    [InlineData("vlc")]
+    public void FloatPcmFollowsRateButCannotEstablishTrackDepth(string player)
+    {
+        var key = $@"C:\Apps\{player}.exe";
+        var settings = new SourceSettings { FollowSourceBitDepth = true };
+        settings.SelectMaster(key, player);
+        var source = Source(key) with { ExecutablePath = key };
+        var stream = Observation(settings, 44100) with { SourceKey = key, Provenance = RateProvenance.WasapiStream,
+            BitsPerSample = 32, UsesFloatPcm = true };
+        var automatic = SampleRatePolicy.Evaluate(settings, [source], [stream]);
+        Assert.Equal(44100, automatic.DesiredSampleRateHz);
+        Assert.Null(automatic.DesiredBitsPerSample);
+        Assert.Equal(32, SampleRatePolicy.Evaluate(settings, [source], [stream with { UsesFloatPcm = false }]).DesiredBitsPerSample);
+        settings.ManualBitDepths[key] = 16;
+        var manual = SampleRatePolicy.Evaluate(settings, [source], [stream]);
+        Assert.Equal(16, manual.DesiredBitsPerSample);
+        Assert.True(manual.ManualBitDepth);
+    }
+
     [Fact]
     public void NoSelectionDoesNotUseAnActiveApplication()
     {
