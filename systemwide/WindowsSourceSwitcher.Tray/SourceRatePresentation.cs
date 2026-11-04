@@ -46,6 +46,12 @@ internal static class SourceRatePresentation
             return new("Rate held", "Selected app is idle or paused. Current output rate is unchanged.");
         }
 
+        if (settings.FollowSourceBitDepth && observation?.Provenance == RateProvenance.PlayerMetadata
+            && IsCurrentObservation(source, settings, observation))
+            return new(FormatRate(observation.SampleRateHz!.Value) + " track",
+                observation.BitsPerSample is { } trackBits ? $"Fooyin reports a {trackBits}-bit track." : "Fooyin reports the track rate. Depth is unknown.",
+                observation.Detail);
+
         if (settings.BrowserRateDetectionEnabled && observation?.Provenance == RateProvenance.BrowserDecoder
             && IsCurrentObservation(source, settings, observation))
             return browser?.EvidenceField == BrowserWireProtocol.ChromiumStreamEvidenceField
@@ -53,7 +59,8 @@ internal static class SourceRatePresentation
                     "Sample rate declared by the linked player's stream initialization data. Browser processing and Windows output are separate.", observation.Detail)
                 : browser?.EvidenceField == BrowserWireProtocol.ChromiumHeaderEvidenceField
                 ? new(FormatRate(observation.SampleRateHz!.Value) + " file header",
-                    "Sample rate read from the linked tab's media file. Browser processing and Windows output are separate.", observation.Detail)
+                    (observation.BitsPerSample is { } fileBits ? $"File header reports {fileBits}-bit PCM. " : "")
+                    + "Sample rate read from the linked tab's media file. Browser processing and Windows output are separate.", observation.Detail)
                 : new(FormatRate(observation.SampleRateHz!.Value) + " tab decoder",
                     "Decoder metadata from the explicitly chosen browser tab. Tab-to-WASAPI routing and later browser processing are unverified.", observation.Detail);
 

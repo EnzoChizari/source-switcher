@@ -1,10 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Source Switcher Tab Link",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Follow a Helium tab and read available media headers for Source Switcher.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7r0KHer2P+JpOG8ghe21LkEZAw2iqbDLh7bNylnu98lB2AsJfqSese8S+7++BClQ7k5g17c7HNc7fZ5Yheq3eH1YXjMlMQrRv1Dnue04z+o/aClRvbpCGkeRkOgxuqdZlIJhxWhBGqJXdrlhaeNMijb/tEbhqcqIp/3kpzbIVp0PyvcK2RP9T9ZLQwNbmudhbzbQP8QBLYfOcfqkAQY2EQaum4hQJy2v5OxX09hBkjjVBzF/7qtu91VQuwPStIJrY3ShhXKRMBJ+byzB33uMxYc94nwAWyL9cgv0GHM+CpkhpQAILnEIOdxsaBb5WY7ztQj8WFNdDt6AmVar+lvhVQIDAQAB",
   "permissions": ["nativeMessaging", "tabs", "activeTab", "scripting"],
+  "optional_permissions": ["webNavigation"],
+  "optional_host_permissions": ["https://*.kodikplayer.com/*", "https://*.kodikonline.com/*", "https://*.kodik.info/*"],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "Source Switcher Tab Link", "default_popup": "popup.html" },
   "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'" }

@@ -213,7 +213,7 @@ public static class WindowsBrowserPeerIdentity
         if (IsSystemNativeMessagingShell(browser.ExecutablePath))
         {
             // Chromium may launch a native-messaging executable through cmd.exe. Accept
-            // exactly one OS shell under registered Helium, never arbitrary ancestors.
+            // exactly one OS shell under registered Chrome or Helium.
             launchShell = browser;
             parentId = reader.ParentOf(launchShell.ProcessId);
             if (parentId <= 0 || !visited.Add(parentId))
@@ -221,10 +221,10 @@ public static class WindowsBrowserPeerIdentity
             browser = reader.Read(parentId);
             RequireParent(browser, launchShell);
             if (!string.Equals(Path.GetFileName(NormalizeExecutablePath(browser.ExecutablePath)), "chrome.exe", StringComparison.OrdinalIgnoreCase))
-                throw new UnauthorizedAccessException("Only a recognized Helium browser may use the native messaging shell launcher.");
+                throw new UnauthorizedAccessException("Only a recognized Chrome or Helium browser may use the native messaging shell launcher.");
         }
         if (!reader.IsRegisteredGecko(browser.ExecutablePath))
-            throw new UnauthorizedAccessException("The native host was not started by a locally registered Firefox, Zen or Helium browser.");
+            throw new UnauthorizedAccessException("The native host was not started by a locally registered Firefox, Zen, Chrome, or Helium browser.");
         var browserPath = NormalizeExecutablePath(browser.ExecutablePath);
         var root = browser;
         for (var depth = 0; depth < MaxBrowserAncestors; depth++)
@@ -424,8 +424,8 @@ public static class WindowsBrowserPeerIdentity
         IsGeckoProduct(executableName, productName, originalFilename, companyName)
         || (string.Equals(executableName, "chrome.exe", StringComparison.OrdinalIgnoreCase)
             && string.Equals(originalFilename, "chrome.exe", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(productName, "Helium", StringComparison.Ordinal)
-            && string.Equals(companyName, "The Helium Authors", StringComparison.Ordinal));
+            && ((productName == "Helium" && companyName == "The Helium Authors")
+                || (productName == "Google Chrome" && companyName is "Google LLC" or "Google Inc.")));
 
     internal static bool RegisteredHeliumInstallMatches(string? displayName, string? publisher,
         string? installLocation, string expectedPath)

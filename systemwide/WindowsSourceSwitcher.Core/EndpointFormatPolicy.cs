@@ -13,7 +13,7 @@ public static class EndpointFormatPolicy
         EndpointFormat current,
         IEnumerable<EndpointFormat> supportedFormats,
         int desiredSampleRateHz,
-        int? sourceBitsPerSample = null, bool requireExactDepth = false)
+        int? sourceBitsPerSample = null, bool requireExactDepth = false, bool preventDepthReduction = false)
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(supportedFormats);
@@ -26,6 +26,14 @@ public static class EndpointFormatPolicy
             return matchingRate.FirstOrDefault(format => format.BitsPerSample == sourceBitsPerSample);
         if (sourceBitsPerSample is not (16 or 24 or 32))
             return matchingRate.FirstOrDefault(format => format.BitsPerSample == current.BitsPerSample);
+
+        if (preventDepthReduction)
+        {
+            var minimumDepth = Math.Max(current.BitsPerSample, sourceBitsPerSample.Value);
+            return matchingRate.Where(format => format.BitsPerSample is 16 or 24 or 32 && format.BitsPerSample >= minimumDepth)
+                .MinBy(format => format.BitsPerSample)
+                ?? matchingRate.FirstOrDefault(format => format.BitsPerSample == current.BitsPerSample);
+        }
 
         return matchingRate.Where(format => format.BitsPerSample is 16 or 24 or 32)
             .OrderBy(format => format.BitsPerSample < sourceBitsPerSample.Value)

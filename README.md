@@ -18,12 +18,14 @@ Use the self-contained release ZIP on a Windows x64 PC. The ZIP includes the .NE
 
 ## Install the Chrome extension
 
-1. In Source Switcher, open **Settings**. Enable browser tab integration and click **Register browser helper**.
-2. In Chrome, open `chrome://extensions` and turn on **Developer mode**. Click **Load unpacked** and select `browser/chromium` inside the extracted Source Switcher folder.
-3. On the tab you want to use, open **Source Switcher Tab Link** from Chrome's Extensions menu. Click **Follow this tab**, or enable **Automatically follow the active tab**. Start playback and double-click Chrome (sometimes listed as `chrome`) in **Sources**.
+1. In Source Switcher, open **Settings → Browser integration**. Enable **Browser tab integration** and click **Register browser helper**.
+2. In Chrome or Helium, open `chrome://extensions` and turn on **Developer mode**. Click **Load unpacked** and select `browser/chromium` inside the extracted Source Switcher folder.
+3. On the tab you want to use, open **Source Switcher Tab Link** from the browser's Extensions menu. Click **Follow this tab**, or enable **Automatically follow the active tab**. Start playback and double-click your browser (which may be listed as `chrome`) in **Sources**.
 4. To test the link, choose **Open PCM playback demo** in the extension. Follow the demo tab and play one test at a time.
 
 After an app update, click **Reload** on the extension's card at `chrome://extensions` and reopen the media tab. Register the helper again if you move the app. On a new website, open the extension once to grant temporary access. Unsupported players can use the Windows stream rate when available. [Extension details](browser/chromium/README.md)
+
+For a Kodik player embedded in Animelib, click **Enable embedded Kodik players**, approve the browser prompt, and follow the tab before starting the video. When a player has already started, reload the episode page and follow before pressing play.
 
 ## Choose a switching mode
 
@@ -42,7 +44,25 @@ After an app update, click **Reload** on the extension's card at `chrome://exten
 
 **Format detection.** Source Switcher observes PCM streams submitted to Windows and uses supported formats for the selected shared-mode playback device. If the observation is missing, stale, ambiguous, or unsupported, it can hold the last confirmed format. Automatic rate detection uses Windows audio tracing and may require administrator elevation or appropriate tracing permissions.
 
-**Sample rate and bit depth are separate.** Apple Music, Spotify, and floating-point streams keep the current depth in Auto. A saved manual override gives you control when you know which depth you want.
+**Sample rate and bit depth are separate.** With catalog estimates enabled, Apple Music can raise the output depth in Auto and keeps the higher depth across tracks. Spotify and floating-point streams keep the current depth. A saved manual override lets you choose an exact depth.
+
+| Source | What Auto depth follows |
+| --- | --- |
+| Apple Music | A higher catalog estimate, when enabled and supported by the output. Catalog depth is an estimate. |
+| Chrome and Helium | Integer depth from a supported WAV or native FLAC header in the linked tab. |
+| Fooyin with Now Playing export | The active track's reported rate and depth. |
+| Games and other apps with a clear integer stream | The PCM precision submitted to Windows. |
+| Spotify, VLC, browser media without depth, and floating-point streams | Keeps the current output depth when track precision is unavailable. |
+
+### Connect Fooyin track metadata
+
+In Fooyin, open **Settings → Playback → Now Playing**. Enable **File** output to `%APPDATA%\DX5SourceSwitcher\fooyin-format.txt` using the expanded path in the file picker. Enable **Track changes**, **Play and pause**, **Stop**, and **Every second**. Leave append off and use this format:
+
+```text
+SSFOOYIN1|%isplaying%|%samplerate%|%bitdepth%|%datetime%
+```
+
+Select Fooyin as master and enable **Follow source bit depth (experimental)**. The report is read locally while Fooyin has an active session. [Fooyin format fields](https://docs.fooyin.org/en/latest/scripting/variables.html)
 
 **Mixer.** View session activity and adjust volume or mute for supported sessions on the selected output. Some sessions are read-only when the app cannot safely identify or control them. The meters show Windows signal activity.
 

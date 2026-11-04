@@ -10,6 +10,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly SourcePopup _popup = new();
     private readonly NotifyIcon _icon;
     private Icon? _trayArtwork;
+    private bool _trayUpdateBadge;
     private int _trayThemePosted;
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 3000 };
     private readonly System.Windows.Forms.Timer _notificationTimer = new() { Interval = 50 };
@@ -32,6 +33,8 @@ internal sealed class TrayContext : ApplicationContext
     private readonly CancellationTokenSource _appleSwitchLifetime = new();
     private string _appleSwitchDetail = "Apple Music switches while rendering; signal and timeline recovery are checked.";
     private string? _appleSwitchFailureKey;
+    private string? _appleWaitingForSignalKey;
+    private long _appleSignalWaitStarted;
     private readonly FavoritePlaybackMonitor _playback = new();
     private Task _playbackStartup = Task.CompletedTask;
     private IReadOnlyDictionary<string, FavoritePlaybackState> _mediaPlayback = new Dictionary<string, FavoritePlaybackState>();
@@ -47,6 +50,7 @@ internal sealed class TrayContext : ApplicationContext
     private RateDecision? _lastDecision;
     private BrowserRateBridge? _browserBridge;
     private RateObservation? _browserObservation;
+    private RateObservation? _fooyinObservation;
     private Task _browserConfigurationTask = Task.CompletedTask;
     private int _browserNotificationPosted;
     private AudioDeviceWatcher? _deviceWatcher;
@@ -67,6 +71,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly SettingsStore _store;
     private readonly SourceSettings _settings;
     private readonly string _logPath;
+    private readonly string _fooyinReportPath;
     private readonly bool _diagnosticsMode;
     private AutomaticRateMonitor? _monitor;
     private WasapiStreamRateMonitor? _streamMonitor;
@@ -95,6 +100,7 @@ internal sealed class TrayContext : ApplicationContext
     private static readonly HttpClient UpdateHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
     private readonly GitHubUpdateFeed _updateFeed = new(UpdateHttp);
     private readonly CancellationTokenSource _updateLifetime = new();
+    private readonly System.Windows.Forms.Timer _updateCheckTimer = new() { Interval = (int)TimeSpan.FromMinutes(30).TotalMilliseconds };
     private PortableRelease? _availableUpdate;
     private bool _updateBusy;
     private bool _refreshing, _applying, _exiting, _reprobe = true, _targetWasAvailable;
@@ -119,6 +125,7 @@ internal sealed class TrayContext : ApplicationContext
         _diagnosticsMode = diagnosticsMode;
         _store = new SettingsStore(Path.Combine(directory, "settings.json"));
         _logPath = Path.Combine(directory, "switcher.log");
+        _fooyinReportPath = Path.Combine(directory, FooyinFormatReport.FileName);
         var loaded = diagnosticsMode ? new SettingsLoadResult(new SourceSettings { SwitchingEnabled = false }, null)
             : _store.LoadAsync().GetAwaiter().GetResult();
         _settings = loaded.Settings;
@@ -258,6 +265,7 @@ internal sealed class TrayContext : ApplicationContext
             _formatThrottle.Reset();
             _stabilityTimer.Interval = 180;
             _failedKey = _candidateKey = null;
+            _appleWaitingForSignalKey = null;
             _stabilityTimer.Stop();
             _reprobe = true;
             _warning = null;
@@ -339,13 +347,20 @@ internal sealed class TrayContext : ApplicationContext
         _popup.BeginInvoke(new Action(() => StartRefresh()));
         if (!diagnosticsMode && PortableUpdateInstaller.CanInstall)
         {
+            _updateCheckTimer.Tick += async (_, _) => await RunUpdateAsync();
+            _updateCheckTimer.Start();
             _popup.UpdateCheckRequested += async () => await RunUpdateAsync();
             _popup.UpdateInstallRequested += async () =>
             {
                 if (_exiting || _updateBusy || _availableUpdate is not { } release) return;
-                using var changelog = new UpdateChangelogDialog(release);
-                if (changelog.ShowDialog(_popup) == DialogResult.OK && _availableUpdate == release)
-                    await RunUpdateAsync(install: true);
+                _updateCheckTimer.Stop();
+                try
+                {
+                    using var changelog = new UpdateChangelogDialog(release);
+                    if (changelog.ShowDialog(_popup) == DialogResult.OK && _availableUpdate == release)
+                        await RunUpdateAsync(install: true);
+                }
+                finally { if (!_exiting) _updateCheckTimer.Start(); }
             };
             _popup.BeginInvoke(new Action(async () => await RunUpdateAsync(startup: true)));
         }
@@ -392,6 +407,11 @@ internal sealed class TrayContext : ApplicationContext
         {
             var available = _availableUpdate is not null;
             _popup.SetUpdateStatus(status, true, available, available);
+            if (_trayUpdateBadge != available)
+            {
+                RefreshTrayArtwork(available);
+                _trayUpdateBadge = available;
+            }
         }
     }
 
@@ -429,6 +449,7 @@ internal sealed class TrayContext : ApplicationContext
         _epoch++;
         Interlocked.Increment(ref _powerGeneration);
         _candidateKey = _failedKey = null;
+        _appleWaitingForSignalKey = null;
         _streamObservations = new Dictionary<string, RateObservation>();
         _streamMonitor?.InvalidateExistingStreams();
         InvalidateObservation();
@@ -570,6 +591,7 @@ internal sealed class TrayContext : ApplicationContext
         _epoch++;
         InvalidateAppleSwitchPreferences();
         _candidateKey = _failedKey = null;
+        _appleWaitingForSignalKey = null;
         _stabilityTimer.Stop();
         _favoriteAutoTimer.Stop();
         _saveTask = SaveAsync();
@@ -588,20 +610,26 @@ internal sealed class TrayContext : ApplicationContext
             {
                 Interlocked.Exchange(ref _trayThemePosted, 0);
                 if (_exiting) return;
-                var next = TrayIconArtwork.CreateForCurrentTheme();
-                var previous = _trayArtwork;
-                _icon.Icon = next;
-                _trayArtwork = next;
-                previous?.Dispose();
+                RefreshTrayArtwork(_trayUpdateBadge);
             }));
         }
         catch (InvalidOperationException) { Interlocked.Exchange(ref _trayThemePosted, 0); }
+    }
+
+    private void RefreshTrayArtwork(bool updateAvailable)
+    {
+        var next = TrayIconArtwork.CreateForCurrentTheme(updateAvailable);
+        var previous = _trayArtwork;
+        _icon.Icon = next;
+        _trayArtwork = next;
+        previous?.Dispose();
     }
 
     private void InvalidateObservation()
     {
         ProjectAppleCatalogObservation();
         _browserObservation = null;
+        _fooyinObservation = null;
         _evidence = "Native rate: unknown. Set a per-app override to choose a rate.";
     }
 
@@ -985,7 +1013,14 @@ internal sealed class TrayContext : ApplicationContext
             var sources = snapshot.Sources.Where(s => s.CanPersist).Select(s => PlaybackPresentation.ForRatePolicy(s, _mediaPlayback)).ToArray();
             _browserObservation = BrowserSourcePolicy.Observe(_settings, sources, browser,
                 _browserBridge?.IsEvidenceCurrent(browser.Version) == true);
-            var observations = _streamObservations.Values.Concat(new[] { _observation, _browserObservation }.OfType<RateObservation>()).ToArray();
+            var fooyin = _settings.FollowSourceBitDepth ? sources.FirstOrDefault(source => source.IsActive
+                && StringComparer.OrdinalIgnoreCase.Equals(source.Key, selectedKey)
+                && StringComparer.OrdinalIgnoreCase.Equals(Path.GetFileName(source.ExecutablePath), "fooyin.exe")) : null;
+            var fooyinObservation = fooyin is null ? null
+                : await Task.Run(() => FooyinFormatReport.Read(_fooyinReportPath, fooyin, selectedRevision));
+            if (_exiting || epoch != _epoch) return;
+            _fooyinObservation = fooyinObservation;
+            var observations = _streamObservations.Values.Concat(new[] { _observation, _browserObservation, fooyinObservation }.OfType<RateObservation>()).ToArray();
             var decision = BrowserSourcePolicy.HoldIfRequired(_settings, browser, _browserObservation,
                 SampleRatePolicy.Evaluate(_settings, sources, observations));
             _lastDecision = decision;
@@ -1034,9 +1069,13 @@ internal sealed class TrayContext : ApplicationContext
             if (snapshot.Current is null || snapshot.Mix is null) { _status = "Cannot read the output format. Refresh to retry."; return; }
 
             var sourceBits = decision.DesiredBitsPerSample;
+            var preventDepthReduction = decision.Reason == RateDecisionReason.CatalogMetadata && !decision.ManualBitDepth;
             if (snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
-                && (sourceBits is null || snapshot.Current.BitDepth == sourceBits))
+                && (sourceBits is null || snapshot.Current.BitDepth == sourceBits
+                    || preventDepthReduction && snapshot.Current.BitDepth > sourceBits))
             {
+                if (preventDepthReduction && snapshot.Current.BitDepth > sourceBits)
+                    _status += $" Keeping the current {snapshot.Current.BitDepth}-bit output.";
                 _failedKey = _candidateKey = null;
                 await RememberAsync(desired);
                 return;
@@ -1045,7 +1084,7 @@ internal sealed class TrayContext : ApplicationContext
             var target = EndpointFormatPolicy.SelectExact(
                 new(snapshot.Current.SampleRateHz, snapshot.Current.BitDepth, snapshot.Current.Channels),
                 snapshot.Formats.Select(f => new EndpointFormat(f.SampleRateHz, f.BitDepth, f.Channels)), desired,
-                sourceBits, decision.ManualBitDepth);
+                sourceBits, decision.ManualBitDepth, preventDepthReduction);
             if (target is null)
             {
                 _status = decision.ManualBitDepth
@@ -1055,8 +1094,15 @@ internal sealed class TrayContext : ApplicationContext
             }
             var formatLabel = sourceBits is null ? SourcePopup.FormatRate(desired)
                 : $"{SourcePopup.FormatRate(desired)} at {target.BitsPerSample}-bit";
+            var depthEvidence = decision.Reason switch
+            {
+                RateDecisionReason.CatalogMetadata => "Apple Music catalog estimate",
+                RateDecisionReason.BrowserDecoder => "Media file header",
+                RateDecisionReason.PlayerMetadata => "Fooyin track metadata",
+                _ => "Submitted PCM"
+            };
             var depthFallback = sourceBits is { } bits && bits != target.BitsPerSample
-                ? $" {(decision.Reason == RateDecisionReason.CatalogMetadata ? "Apple Music catalog estimate" : "Submitted PCM")} is {bits}-bit. Output uses {target.BitsPerSample}-bit at this rate." : "";
+                ? $" {depthEvidence} is {bits}-bit. Output uses {target.BitsPerSample}-bit at this rate." : "";
             if (snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
                 && snapshot.Current.BitDepth == target.BitsPerSample)
             {
@@ -1068,6 +1114,13 @@ internal sealed class TrayContext : ApplicationContext
             var key = $"{endpointId}|{_settings.SelectedSourceKey}|{desired}|{sourceBits}|{target.BitsPerSample}|{snapshot.Current.BitDepth}|{snapshot.Current.Channels}|{_settings.SelectionRevision}";
             var appleSource = snapshot.Sources.FirstOrDefault(s => s.Identity == selectedKey && s.SupportsAutomaticRate);
             if (_failedKey == key) { _status = _appleSwitchFailureKey == key ? _appleSwitchDetail : "Switch failed. Check exclusive playback / device availability, then Refresh / retry. See switcher.log for details."; return; }
+            var appleSignalKey = appleSource is null ? null : $"{endpointId}|{selectedKey}|{selectedRevision}";
+            var waitingForAppleSignal = appleSignalKey is not null && _appleWaitingForSignalKey == appleSignalKey;
+            if (waitingForAppleSignal && System.Diagnostics.Stopwatch.GetElapsedTime(_appleSignalWaitStarted) < TimeSpan.FromSeconds(1))
+            {
+                _status = AppleMusicSwitchGuard.WaitingForSignalStatus;
+                return;
+            }
             if (_candidateKey != key)
             {
                 _candidateKey = key;
@@ -1102,11 +1155,12 @@ internal sealed class TrayContext : ApplicationContext
             }
             // One operation at a time. Disable source/device edits while the uncancellable Windows
             // call is in flight; the next poll still verifies the pinned endpoint and current source.
-            _applying = true;
+            _applying = appleSource is null;
             var formatOperation = ++_formatOperationGeneration;
             RecordSessionContinuity(_sessionContinuity.Cancel());
             _status = $"Applying {formatLabel}… Apps may briefly restart their shared streams.";
-            if (appleSource is not null) _status = "Checking Apple Music's live stream and confirming playback after switching…";
+            if (appleSource is not null)
+                _status = waitingForAppleSignal ? AppleMusicSwitchGuard.WaitingForSignalStatus : "Checking for live Apple Music audio…";
             Render();
             AppleSwitchResult? appleSwitch = null;
             var appleContextCurrent = appleSource is null ? null : CreateAppleSwitchContext(endpointId, selectedKey!, selectedRevision);
@@ -1123,11 +1177,13 @@ internal sealed class TrayContext : ApplicationContext
                     && _streamMonitor?.IsEvidenceCurrent(observedStreamVersion) != true) return null;
                 if (decision.Reason == RateDecisionReason.BrowserDecoder
                     && _browserBridge?.IsEvidenceCurrent(browser.Version) != true) return null;
+                if (decision.Reason == RateDecisionReason.PlayerMetadata && (fooyin is null
+                    || FooyinFormatReport.Read(_fooyinReportPath, fooyin, selectedRevision) != fooyinObservation)) return null;
                 if (decision.Reason == RateDecisionReason.CatalogMetadata
                     && (selectedKey is null || catalogSession is null
                         || _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) != true)) return null;
                 if (appleSource is null)
-                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits, decision.ManualBitDepth);
+                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits, decision.ManualBitDepth, preventDepthReduction);
 
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_appleSwitchLifetime.Token);
                 deadline.CancelAfter(TimeSpan.FromSeconds(9));
@@ -1135,6 +1191,15 @@ internal sealed class TrayContext : ApplicationContext
                 AppleRenderObservation live = new(null, null);
                 bool ContextCurrent() => appleContextCurrent!();
                 float? Peak() { live = liveReader.Read(endpointId, selectedKey!); return live.Peak; }
+                if (waitingForAppleSignal)
+                {
+                    var signal = liveReader.Read(endpointId, selectedKey!);
+                    if (!AppleMusicSwitchGuard.HasLiveSignal(signal.Active, signal.Peak))
+                    {
+                        appleSwitch = new(null, AppleMusicSwitchGuard.WaitingForSignalStatus, false, true, WaitingForSignal: true);
+                        return null;
+                    }
+                }
                 IAppleSwitchSession? session;
                 try { session = await WindowsAppleSwitchSession.OpenAsync(deadline.Token).ConfigureAwait(false); }
                 catch (Exception error)
@@ -1142,14 +1207,31 @@ internal sealed class TrayContext : ApplicationContext
                     appleSwitch = new(null, "Apple Music session could not be opened; output held: " + error.Message, false, true);
                     return null;
                 }
+                bool AppleEvidenceCurrent()
+                {
+                    return ContextCurrent() && epoch == Volatile.Read(ref _epoch)
+                        && (decision.Reason == RateDecisionReason.ManualOverride || _playback.IsCurrent(playbackVersion))
+                        && (decision.Reason != RateDecisionReason.WasapiStream || _streamMonitor?.IsEvidenceCurrent(observedStreamVersion) == true)
+                        && (decision.Reason != RateDecisionReason.CatalogMetadata || selectedKey is not null && catalogSession is not null
+                            && _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) == true);
+                }
                 ApplyResult? ApplyApple()
                 {
-                    if (!ContextCurrent() || epoch != Volatile.Read(ref _epoch)) return null;
-                    if (decision.Reason != RateDecisionReason.ManualOverride && !_playback.IsCurrent(playbackVersion)) return null;
-                    if (decision.Reason == RateDecisionReason.WasapiStream && _streamMonitor?.IsEvidenceCurrent(observedStreamVersion) != true) return null;
-                    if (decision.Reason == RateDecisionReason.CatalogMetadata && (selectedKey is null || catalogSession is null
-                        || _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) != true)) return null;
-                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits, decision.ManualBitDepth);
+                    if (!AppleEvidenceCurrent()) return null;
+                    try
+                    {
+                        // Preflight is read-only. Disable the controls only when a write is imminent.
+                        _popup.Invoke(new Action(() =>
+                        {
+                            if (!AppleEvidenceCurrent()) return;
+                            _applying = true;
+                            _status = $"Applying {formatLabel}…";
+                            Render();
+                        }));
+                    }
+                    catch (InvalidOperationException) { return null; }
+                    if (!_applying || !AppleEvidenceCurrent()) return null;
+                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits, decision.ManualBitDepth, preventDepthReduction);
                 }
                 using (session as IDisposable)
                     appleSwitch = await new AppleMusicSwitchGuard().RunAsync(session, ContextCurrent, () => live.Active,
@@ -1173,6 +1255,8 @@ internal sealed class TrayContext : ApplicationContext
             });
             if (appleSwitch is not null)
             {
+                _appleWaitingForSignalKey = appleSwitch.WaitingForSignal ? appleSignalKey : null;
+                if (appleSwitch.WaitingForSignal) _appleSignalWaitStarted = System.Diagnostics.Stopwatch.GetTimestamp();
                 if (_appleSwitchDetail != appleSwitch.Detail)
                 {
                     _appleSwitchDetail = appleSwitch.Detail;
@@ -1648,7 +1732,7 @@ internal sealed class TrayContext : ApplicationContext
             if (source is not null)
             {
                 _streamObservations.TryGetValue(source.Identity, out var streamObservation);
-                var display = SourceRatePresentation.Describe(source, _settings, _browserObservation ?? _observation, streamObservation,
+                var display = SourceRatePresentation.Describe(source, _settings, _browserObservation ?? _fooyinObservation ?? _observation, streamObservation,
                     _browserBridge?.Snapshot, _mediaPlayback.GetValueOrDefault(source.Identity));
                 // Show capability immediately after selection, before the next census. A saved
                 // Apple Music preference never implies a detector exists for another app.
@@ -1656,7 +1740,7 @@ internal sealed class TrayContext : ApplicationContext
                     || _settings.ManualSampleRatesHz.ContainsKey(source.Identity)
                     || display.Evidence is not null)
                     evidence = display.Detail;
-                if (_settings.StreamRateDetectionEnabled && !_settings.ManualSampleRatesHz.ContainsKey(source.Identity)
+                if (display.Evidence is null && _settings.StreamRateDetectionEnabled && !_settings.ManualSampleRatesHz.ContainsKey(source.Identity)
                     && streamObservation is null && _streamMonitor?.Error is { } error)
                     evidence = error;
             }
@@ -1670,7 +1754,7 @@ internal sealed class TrayContext : ApplicationContext
                         : "Selected app is unavailable. Output stays unchanged while waiting for its stream.";
             }
             _popup.Render(_snapshot.Devices, _snapshot.Sources, _snapshot.Formats, _snapshot.Current,
-                _settings, _suspended ? _powerStatus : status, evidence, _applying || _suspended, _browserObservation ?? _observation, _streamObservations, _browserBridge?.Snapshot, _mediaPlayback, _observation);
+                _settings, _suspended ? _powerStatus : status, evidence, _applying || _suspended, _browserObservation ?? _fooyinObservation ?? _observation, _streamObservations, _browserBridge?.Snapshot, _mediaPlayback, _observation);
             _popup.SetFavoriteAutoSwitchStatus(_favoriteAutoStatus);
             _popup.SetFullscreenStatus(_fullscreenStatus);
             if (_popup.DiagnosticsVisible) RenderDiagnostics();
@@ -1705,7 +1789,7 @@ internal sealed class TrayContext : ApplicationContext
         var streamRate = source is not null && stream is not null && stream.SessionToken == source.SessionToken
             && stream.SelectionRevision == _settings.SelectionRevision ? stream.SampleRateHz : null;
         var target = source is null ? "No current audio session"
-            : SourceRatePresentation.Describe(source, _settings, _browserObservation ?? _observation, stream, _browserBridge?.Snapshot,
+            : SourceRatePresentation.Describe(source, _settings, _browserObservation ?? _fooyinObservation ?? _observation, stream, _browserBridge?.Snapshot,
                 _mediaPlayback.GetValueOrDefault(source.Identity)).Text;
         var browser = _browserBridge?.Snapshot ?? BrowserDecoderSnapshot.Empty;
         var confidence = _lastDecision?.Reason switch
@@ -1720,6 +1804,7 @@ internal sealed class TrayContext : ApplicationContext
             RateDecisionReason.BrowserHold => "Held browser target; fresh decoder evidence unavailable",
             RateDecisionReason.VerifiedNative => "Verified source adapter",
             RateDecisionReason.CatalogMetadata => "Catalog estimate; stream unverified",
+            RateDecisionReason.PlayerMetadata => "Fooyin track metadata; downstream processing is separate",
             RateDecisionReason.SourcePaused or RateDecisionReason.SourceUnavailable => "Held target; no fresh source measurement",
             RateDecisionReason.ConflictingObservations => "Conflicting evidence; holding output",
             _ => "Unknown / no current automatic target"
@@ -1744,14 +1829,22 @@ internal sealed class TrayContext : ApplicationContext
             new("Fullscreen priority", _fullscreenStatus),
             new("Target / evidence", target),
             new("Confidence", confidence),
-            new("Original media", _browserObservation?.SampleRateHz is { } decoded ? SourcePopup.FormatRate(decoded) + " chosen tab decoder; app routing unverified" : "Unknown; submitted PCM does not establish content rate"),
+            new("Original media", _browserObservation?.SampleRateHz is { } decoded ? SourcePopup.FormatRate(decoded)
+                + (_browserObservation.BitsPerSample is { } fileBits ? $" · {fileBits}-bit file header" : " chosen tab evidence")
+                + "; app routing unverified" : _fooyinObservation?.SampleRateHz is { } fooyinRate
+                    ? SourcePopup.FormatRate(fooyinRate) + (_fooyinObservation.BitsPerSample is { } fooyinBits ? $" · {fooyinBits}-bit" : "")
+                        + " from Fooyin"
+                    : "Unknown; submitted PCM does not establish content rate"),
             new("Submitted PCM", streamRate is { } rate
                 ? SourcePopup.FormatRate(rate) + (stream?.BitsPerSample is { } bits
                     ? $" · {bits}-bit " + (stream.UsesFloatPcm ? "float" : "integer") : "")
                 : "Not observed"),
             new("Follow bit depth", _settings.FollowSourceBitDepth
                 ? _lastDecision?.DesiredBitsPerSample is { } wantedBits
-                    ? $"On · {wantedBits}-bit " + (_lastDecision.ManualBitDepth ? "manual override" : "submitted PCM")
+                    ? $"On · {wantedBits}-bit " + (_lastDecision.ManualBitDepth ? "manual override"
+                        : _lastDecision.Reason == RateDecisionReason.CatalogMetadata ? "catalog estimate · raise only"
+                        : _lastDecision.Reason == RateDecisionReason.BrowserDecoder ? "file header"
+                        : _lastDecision.Reason == RateDecisionReason.PlayerMetadata ? "Fooyin track metadata" : "submitted PCM")
                     : source?.SupportsAutomaticRate == true ? "On · keeping output depth for Apple Music"
                     : "On · keeping output depth until usable evidence"
                 : "Off · keep output depth"),
@@ -1775,6 +1868,7 @@ internal sealed class TrayContext : ApplicationContext
         if (_exiting) return;
         _exiting = true;
         _updateLifetime.Cancel();
+        _updateCheckTimer.Stop();
         _tutorial?.Dispose();
         _tutorial = null;
         _appleSwitchLifetime.Cancel();
@@ -1840,6 +1934,7 @@ internal sealed class TrayContext : ApplicationContext
             _timer.Dispose();
             _appleSwitchLifetime.Dispose();
             _updateLifetime.Dispose();
+            _updateCheckTimer.Dispose();
             _notificationTimer.Dispose();
             _stabilityTimer.Dispose();
             _favoriteAutoTimer.Dispose();

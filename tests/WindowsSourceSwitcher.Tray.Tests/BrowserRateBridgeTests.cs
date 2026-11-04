@@ -66,6 +66,32 @@ public sealed class BrowserRateBridgeTests
     }
 
     [Fact]
+    public async Task SameRateWithNewFileDepthInvalidatesPreviousEvidence()
+    {
+        var name = PipeName();
+        await using var bridge = Bridge(name);
+        await bridge.StartAsync();
+        using var client = await Connect(name);
+        async Task SendHeader(int sequence, int bits)
+        {
+            var request = await Request(client);
+            Assert.True(request.FileBitDepth);
+            var response = Response(request, sequence);
+            response["evidenceField"] = BrowserWireProtocol.ChromiumHeaderEvidenceField;
+            response["outputRateHz"] = null;
+            response["fileBitsPerSample"] = bits;
+            await BrowserWireProtocol.WriteFrameAsync(client, Encoding.UTF8.GetBytes(response.ToJsonString()));
+        }
+        await SendHeader(1, 16);
+        var first = await WaitFor(bridge, snapshot => snapshot.FileBitsPerSample == 16);
+        await SendHeader(2, 24);
+        var next = await WaitFor(bridge, snapshot => snapshot.FileBitsPerSample == 24);
+        Assert.Equal(first.DecoderRateHz, next.DecoderRateHz);
+        Assert.False(bridge.IsEvidenceCurrent(first.Version));
+        Assert.True(bridge.IsEvidenceCurrent(next.Version));
+    }
+
+    [Fact]
     public async Task PauseAndDisconnectHoldThePinnedContextWithoutFreshDecoderEvidence()
     {
         var name = PipeName();

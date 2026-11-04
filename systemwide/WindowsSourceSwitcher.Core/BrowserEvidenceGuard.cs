@@ -12,6 +12,7 @@ public sealed record BrowserDecoderSnapshot(long Version, string? BrowserExecuta
 {
     public string? EvidenceField { get; init; }
     public bool DecoderSupported { get; init; } = true;
+    public int? FileBitsPerSample { get; init; }
     public static BrowserDecoderSnapshot Empty { get; } = new(0, null, 0, null, false, null, null, 0,
         true, null, null, BrowserDecoderState.Disabled, "Browser tab integration is off.", 0, null, null);
 
@@ -24,7 +25,7 @@ public sealed record BrowserDecoderSnapshot(long Version, string? BrowserExecuta
         && Paused == other.Paused && DecoderRateHz == other.DecoderRateHz && State == other.State
         && string.Equals(BrowserInstanceNonce, other.BrowserInstanceNonce, StringComparison.Ordinal)
         && string.Equals(EvidenceField, other.EvidenceField, StringComparison.Ordinal)
-        && DecoderSupported == other.DecoderSupported;
+        && DecoderSupported == other.DecoderSupported && FileBitsPerSample == other.FileBitsPerSample;
 }
 
 /// <summary>Consumes receiver-issued requests once and stamps evidence with receiver monotonic time.</summary>
@@ -111,9 +112,9 @@ public sealed class BrowserEvidenceGuard
         {
             BrowserDecoderState.Available => message.EvidenceField switch
             {
-                BrowserWireProtocol.ChromiumHeaderEvidenceField => "Chosen Helium tab's media file header; browser processing and output rate are separate.",
-                BrowserWireProtocol.ChromiumStreamEvidenceField => "Chosen Helium tab's stream initialization header; browser processing and output rate are separate.",
-                BrowserWireProtocol.ChromiumEvidenceField => "Chosen Helium tab audio-track decoder configuration; browser processing and resampling may follow.",
+                BrowserWireProtocol.ChromiumHeaderEvidenceField => "Chosen Chromium tab's media file header; browser processing and output rate are separate.",
+                BrowserWireProtocol.ChromiumStreamEvidenceField => "Chosen Chromium tab's stream initialization header; browser processing and output rate are separate.",
+                BrowserWireProtocol.ChromiumEvidenceField => "Chosen Chromium tab audio-track decoder configuration; browser processing and resampling may follow.",
                 _ => "Chosen Gecko tab decoder reader rate; browser processing and resampling may follow."
             },
             BrowserDecoderState.Paused => "Chosen tab is paused; holding the confirmed target.",
@@ -125,6 +126,7 @@ public sealed class BrowserEvidenceGuard
         var next = _snapshot with { IsTabPinned = state != BrowserDecoderState.Unfollowed,
             TabId = message.TabId, DocumentNonce = message.DocumentNonce, MediaEpoch = message.MediaEpoch,
             Paused = message.Paused, DecoderRateHz = state == BrowserDecoderState.Available ? message.DecoderRateHz : null,
+            FileBitsPerSample = state == BrowserDecoderState.Available ? message.FileBitsPerSample : null,
             OutputRateHz = message.OutputRateHz, State = state, Detail = detail,
             LastReceivedTimestamp = _time.GetTimestamp(), BrowserInstanceNonce = message.BrowserInstanceNonce,
             Title = message.Title, EvidenceField = message.EvidenceField, DecoderSupported = message.DecoderSupported };
@@ -135,7 +137,7 @@ public sealed class BrowserEvidenceGuard
     public BrowserDecoderSnapshot Invalidate(BrowserDecoderState state, string detail)
     {
         _requestId = null;
-        var next = _snapshot with { DecoderRateHz = null,
+        var next = _snapshot with { DecoderRateHz = null, FileBitsPerSample = null,
             OutputRateHz = null, State = state, Detail = detail };
         _snapshot = next with { Version = _snapshot.Version + (_snapshot.HasSameEvidenceAs(next) ? 0 : 1) };
         return _snapshot;

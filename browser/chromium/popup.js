@@ -30,6 +30,16 @@ async function refreshStatus() {
 follow.addEventListener("click", () => action("followActiveTab"));
 stop.addEventListener("click", () => action("stopFollowing"));
 autoFollow.addEventListener("change", () => action("setAutoFollow", { enabled: autoFollow.checked }));
+const kodik = document.getElementById("kodik");
+kodik?.addEventListener("click", async () => {
+  kodik.disabled = true;
+  try {
+    const origins = chrome.runtime.getManifest().optional_host_permissions;
+    const granted = await chrome.permissions.request({ permissions: ["webNavigation"], origins });
+    kodik.textContent = granted ? "Embedded Kodik enabled" : "Kodik access declined · retry";
+  } catch { kodik.textContent = "Could not enable Kodik · retry"; }
+  finally { kodik.disabled = false; }
+});
 document.getElementById("fixtures").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("fixture.html") }));
 action("getStatus");
 const statusTimer = setInterval(refreshStatus, 500);

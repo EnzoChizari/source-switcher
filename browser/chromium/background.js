@@ -7,6 +7,7 @@ importScripts("protocol.js");
   const demos = new Map();
   const linkedStatus = "Tab linked. No supported media header is available; Windows stream detection can still be used.";
   let autoFollow = false;
+  let kodikAllowed;
   let selection = null, selectionGeneration = 0, followGeneration = 0, port = null, portGeneration = 0, sequence = 0;
   let clearReason = "unfollowed", stopAcknowledgement = false, stopTimer = null, status = "Not following a tab.";
   const publicStatus = () => ({ following: selection !== null, tabId: selection?.tabId ?? null,
@@ -85,12 +86,14 @@ importScripts("protocol.js");
       captured.title = protocol.title(tab.title);
       const rate = Number.isInteger(media?.rate) && media.rate >= 8000 && media.rate <= 768000 ? media.rate : null;
       captured.hasRate ||= rate !== null;
-      const evidence = rate !== null ? { rate, streaming: media.streaming === true } : captured.hasRate && media?.conflict ? { conflict: true }
+      const bits = rate !== null && !media.streaming && [16, 24, 32].includes(media.bits) ? media.bits : null;
+      const evidence = rate !== null ? { rate, bits, streaming: media.streaming === true } : captured.hasRate && media?.conflict ? { conflict: true }
         : captured.hasRate && media?.paused ? { paused: true } : null;
       post(protocol.reply(request, ++sequence, browserInstanceNonce, captured, null, evidence));
-      status = rate !== null ? `Tab linked. ${media.streaming ? "Stream header" : "Media file header"}: ${rate / 1000} kHz.`
+      status = rate !== null ? `Tab linked. ${media.streaming ? "Stream header" : "Media file header"}: ${rate / 1000} kHz${bits ? ` · ${bits}-bit` : ""}.`
         : evidence?.paused ? "Tab paused. Holding the last rate."
-        : evidence?.conflict ? "Multiple media elements are playing. Holding the last rate." : linkedStatus;
+        : evidence?.conflict ? "Multiple media elements are playing. Holding the last rate."
+        : tab.audible ? "Tab audio detected. Media format unavailable; Windows stream detection can still be used." : linkedStatus;
     } catch {
       if (captured === selection) status = "Followed tab is unavailable. The app keeps Windows stream detection available.";
       clear(captured === selection ? "unavailable" : clearReason ?? "navigation");
@@ -100,7 +103,34 @@ importScripts("protocol.js");
     const tab = await chrome.tabs.get(tabId);
     const demo = demos.get(tabId);
     if (tab?.url === chrome.runtime.getURL("fixture.html")) return [tab, demo?.observation];
-    const target = { tabId };
+    const [main, frames] = await Promise.all([probeDocument({ tabId }),
+      kodikFrames(tabId).then(targets => Promise.all(targets.map(probeDocument)))]);
+    if (frames.length === 0) return [tab, main];
+    const observations = [main, ...frames];
+    const formats = observations.filter(media => media?.rate);
+    if (formats.length > 1 || observations.some(media => media?.conflict)) return [tab, { conflict: true }];
+    return [tab, formats[0] ?? (observations.every(media => media?.paused) ? { paused: true } : undefined)];
+  }
+  async function kodikFrames(tabId) {
+    if (!chrome.webNavigation?.getAllFrames || !chrome.permissions) return [];
+    try {
+      const origins = chrome.runtime.getManifest().optional_host_permissions;
+      kodikAllowed ??= await chrome.permissions.contains({ permissions: ["webNavigation"], origins });
+      if (!kodikAllowed) return [];
+      const domains = origins.map(origin => origin.slice("https://*.".length, -"/*".length));
+      return (await chrome.webNavigation.getAllFrames({ tabId }) ?? []).filter(frame => {
+        if (frame.frameId <= 0 || frame.errorOccurred || (frame.documentLifecycle && frame.documentLifecycle !== "active")) return false;
+        try {
+          const url = new URL(frame.url);
+          return url.protocol === "https:" && domains.some(domain => url.hostname === domain || url.hostname.endsWith("." + domain));
+        } catch { return false; }
+      }).slice(0, 4).map(frame => ({ tabId, ...(frame.documentId
+        ? { documentIds: [frame.documentId] } : { frameIds: [frame.frameId] }) }));
+    } catch { return []; }
+  }
+  chrome.permissions?.onAdded?.addListener(() => { kodikAllowed = undefined; });
+  chrome.permissions?.onRemoved?.addListener(() => { kodikAllowed = undefined; });
+  async function probeDocument(target) {
     const probe = async injection => {
       try { return (await chrome.scripting.executeScript({ target, ...injection }))[0]?.result; }
       catch { return undefined; }
@@ -116,7 +146,9 @@ importScripts("protocol.js");
         ? await probe({ files: ["stream-formats.js", "media-header.js", "read-media.js"] }) : existing;
     };
     const [file, mse] = await Promise.all([direct(), stream()]);
-    return [tab, mse?.conflict ? mse : file?.rate || file?.conflict ? file : mse?.rate ? mse : mse ?? file];
+    // Only the isolated file reader can supply bit depth. The page-world hook is for rates.
+    const pageObservation = mse?.rate ? { rate: mse.rate, streaming: mse.streaming } : mse;
+    return mse?.conflict ? mse : file?.rate || file?.conflict ? file : pageObservation ?? file;
   }
   chrome.runtime.onConnect.addListener(connection => {
     const tabId = connection.sender?.tab?.id;
@@ -127,7 +159,8 @@ importScripts("protocol.js");
     demos.set(tabId, demo);
     connection.onMessage.addListener(value => {
       const rate = value?.rate;
-      demo.observation = [44100, 48000, 96000, 192000].includes(rate) ? { rate }
+      demo.observation = [44100, 48000, 96000, 192000].includes(rate)
+        ? { rate, bits: [16, 24, 32].includes(value.bits) ? value.bits : null }
         : value?.conflict === true ? { conflict: true } : { paused: true };
     });
     connection.onDisconnect.addListener(() => {

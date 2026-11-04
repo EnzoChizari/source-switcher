@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace WindowsSourceSwitcher.Core;
 
-public sealed record BrowserProbeRequest(string ConnectionNonce, string RequestId);
+public sealed record BrowserProbeRequest(string ConnectionNonce, string RequestId, bool FileBitDepth = false);
 
 public sealed record BrowserDecoderMessage(string Kind, string ConnectionNonce, string RequestId, long Sequence,
     string BrowserInstanceNonce, int? TabId, string? DocumentNonce, long MediaEpoch, bool Paused,
@@ -11,6 +11,7 @@ public sealed record BrowserDecoderMessage(string Kind, string ConnectionNonce, 
 {
     public string EvidenceField { get; init; } = BrowserWireProtocol.EvidenceField;
     public bool DecoderSupported { get; init; } = true;
+    public int? FileBitsPerSample { get; init; }
 }
 
 /// <summary>Bounded observation messages only. Process paths, commands and arbitrary payloads are never accepted.</summary>
@@ -31,14 +32,17 @@ public static class BrowserWireProtocol
     {
         "protocolVersion", "kind", "connectionNonce", "requestId", "sequence", "browserInstanceNonce",
         "tabId", "documentNonce", "mediaEpoch", "paused", "decoderRateHz", "outputRateHz", "evidenceField",
-        "conflict", "title", "clearReason", "coverage", "truncated", "decoderSupported"
+        "conflict", "title", "clearReason", "coverage", "truncated", "decoderSupported", "fileBitsPerSample"
     };
 
     public static byte[] CreateRequest(BrowserProbeRequest request)
     {
         if (!IsReceiverNonce(request.ConnectionNonce) || !IsReceiverNonce(request.RequestId))
             throw new ArgumentException("A browser request requires receiver-issued 128-bit hexadecimal nonces.");
-        return JsonSerializer.SerializeToUtf8Bytes(new { protocolVersion = 1, kind = "request",
+        return request.FileBitDepth
+            ? JsonSerializer.SerializeToUtf8Bytes(new { protocolVersion = 1, kind = "request",
+                connectionNonce = request.ConnectionNonce, requestId = request.RequestId, fileBitDepth = true })
+            : JsonSerializer.SerializeToUtf8Bytes(new { protocolVersion = 1, kind = "request",
             connectionNonce = request.ConnectionNonce, requestId = request.RequestId });
     }
 
@@ -46,14 +50,14 @@ public static class BrowserWireProtocol
     {
         using var document = ParseObject(bytes);
         var root = document.RootElement;
-        RequireFields(root, ["protocolVersion", "kind", "connectionNonce", "requestId"]);
+        RequireFields(root, ["protocolVersion", "kind", "connectionNonce", "requestId", "fileBitDepth"]);
         if (Integer(root, "protocolVersion") != 1 || Text(root, "kind", 16) != "request")
             throw new InvalidDataException("Unsupported browser request.");
         var nonce = Text(root, "connectionNonce", 32);
         var requestId = Text(root, "requestId", 32);
         if (!IsReceiverNonce(nonce) || !IsReceiverNonce(requestId))
             throw new InvalidDataException("Invalid browser request nonce.");
-        return new(nonce, requestId);
+        return new(nonce, requestId, root.TryGetProperty("fileBitDepth", out _) && Boolean(root, "fileBitDepth"));
     }
 
     public static BrowserDecoderMessage ParseResponse(ReadOnlyMemory<byte> bytes)
@@ -104,6 +108,10 @@ public static class BrowserWireProtocol
         if (root.TryGetProperty("coverage", out _) && Text(root, "coverage", 64) != expectedCoverage)
             throw new InvalidDataException("Unsupported browser frame coverage.");
         var truncated = root.TryGetProperty("truncated", out _) && Boolean(root, "truncated");
+        int? fileBits = root.TryGetProperty("fileBitsPerSample", out _) ? NullableInteger(root, "fileBitsPerSample") : null;
+        if (fileBits is not null && (fileBits is not (16 or 24 or 32) || evidenceField != ChromiumHeaderEvidenceField
+            || kind != "decoderSnapshot" || decoderRate is null || paused || conflict || truncated))
+            throw new InvalidDataException("Bit depth requires a current lossless file header with a supported PCM depth.");
         if (kind == "decoderSnapshot" && (tabId is null || documentNonce is null || reason is not null))
             throw new InvalidDataException("A decoder snapshot requires a pinned tab and document identity.");
         if (kind == "clear" && (reason is not "unfollowed" and not "tabClosed" and not "navigation" and not "unavailable"
@@ -111,7 +119,7 @@ public static class BrowserWireProtocol
             throw new InvalidDataException("An invalidation cannot supply a decoder or output rate.");
         return new(kind, connection, request, sequence, browserNonce, tabId, documentNonce, mediaEpoch,
             paused, decoderRate, outputRate, conflict, title, reason, truncated)
-            { EvidenceField = evidenceField, DecoderSupported = decoderSupported };
+            { EvidenceField = evidenceField, DecoderSupported = decoderSupported, FileBitsPerSample = fileBits };
     }
 
     public static async ValueTask<byte[]?> ReadFrameAsync(Stream stream, CancellationToken cancellationToken = default)

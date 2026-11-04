@@ -10,7 +10,8 @@ internal interface IAppleSwitchSession
 {
     Task<AppleSwitchState?> ReadAsync(CancellationToken cancellationToken);
 }
-internal sealed record AppleSwitchResult(ApplyResult? Applied, string Detail, bool PlaybackObserved, bool RetryOnActivity);
+internal sealed record AppleSwitchResult(ApplyResult? Applied, string Detail, bool PlaybackObserved, bool RetryOnActivity,
+    bool WaitingForSignal = false);
 
 /// <summary>Only invalidate a genuinely rendering Apple stream. Dormant/starting streams
 /// can be permanently wedged by a format write. No transport commands are issued.</summary>
@@ -23,6 +24,7 @@ internal sealed class AppleMusicSwitchGuard(
     internal static readonly TimeSpan HealthyConfirmation = TimeSpan.FromMilliseconds(120);
     internal static readonly TimeSpan TimelineConfirmation = TimeSpan.FromMilliseconds(150);
     internal static readonly TimeSpan RebuildTimeout = TimeSpan.FromSeconds(6);
+    internal const string WaitingForSignalStatus = "Waiting for Apple Music to send audio. Reopen the player if it stays silent.";
     public async Task<AppleSwitchResult> RunAsync(IAppleSwitchSession? session, Func<bool> contextCurrent,
         Func<bool?> renderActive, Func<float?> signalPeak, Func<ApplyResult?> apply, CancellationToken cancellationToken,
         Action? formatConfirmed = null)
@@ -47,11 +49,11 @@ internal sealed class AppleMusicSwitchGuard(
                 if (!contextCurrent() || state?.TrackKey != original.TrackKey || state.Status != MediaTransportPlaybackStatus.Playing)
                     return new(null, "Apple Music track/session, playback or master changed; output held.", false, true);
                 var peak = signalPeak();
-                if (renderActive() == true && peak is > 0.001f && float.IsFinite(peak.Value)) healthySince ??= Now();
+                if (HasLiveSignal(renderActive(), peak)) healthySince ??= Now();
                 else healthySince = null;
                 if (healthySince is { } healthy && Now() - healthy >= HealthyConfirmation) break;
                 if (Now() - since >= StartupTimeout)
-                    return new(null, "Apple Music is not yet rendering confirmed audio; holding output to avoid a stalled player.", false, true);
+                    return new(null, WaitingForSignalStatus, false, true, WaitingForSignal: true);
                 await Wait(cancellationToken).ConfigureAwait(false);
             }
             // A live stream is invalidated while actively pumping, so Apple can detect it
@@ -77,7 +79,7 @@ internal sealed class AppleMusicSwitchGuard(
                     return new(applied, "Apple Music confirmation stopped after a track, pause or master change; no transport command sent.", false, false);
                 var peak = signalPeak();
                 lastActive = renderActive(); lastPeak = peak; lastPosition = state.Position;
-                if (lastActive == true && peak is > 0.001f && float.IsFinite(peak.Value))
+                if (HasLiveSignal(lastActive, peak))
                 {
                     firstSignal ??= Now() - afterWrite;
                     if (position is { } start && state.Position is { } current && current - start >= TimelineConfirmation)
@@ -92,6 +94,9 @@ internal sealed class AppleMusicSwitchGuard(
         catch (Exception error)
         { return new(applied, "Apple Music switch/confirmation unavailable: " + error.Message, false, applied is null); }
     }
+
+    internal static bool HasLiveSignal(bool? active, float? peak) =>
+        active == true && peak is > 0.001f && float.IsFinite(peak.Value);
 }
 
 /// <summary>Each transaction pins one GSMTC object. It cannot send commands to another

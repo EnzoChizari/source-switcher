@@ -24,9 +24,10 @@ public sealed class SampleRatePolicyTests
     }
 
     [Theory]
-    [InlineData(true, 192000, RateDecisionReason.CatalogMetadata)]
-    [InlineData(false, 48000, RateDecisionReason.WasapiStream)]
-    public void AppleAutoKeepsDepthWhileFollowingRate(bool catalogEnabled, int expectedRate, RateDecisionReason expectedReason)
+    [InlineData(true, 192000, RateDecisionReason.CatalogMetadata, 24)]
+    [InlineData(false, 48000, RateDecisionReason.WasapiStream, null)]
+    public void AppleAutoUsesCatalogPrecisionAndIgnoresSubmittedDepth(bool catalogEnabled, int expectedRate,
+        RateDecisionReason expectedReason, int? expectedDepth)
     {
         var settings = new SourceSettings { CatalogRateDetectionEnabled = catalogEnabled, FollowSourceBitDepth = true };
         const string apple = @"C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.2.3.4_x64__nzyj5cx40ttqa\AppleMusic.exe";
@@ -37,10 +38,8 @@ public sealed class SampleRatePolicyTests
         var decision = SampleRatePolicy.Evaluate(settings, [source], [catalog, stream]);
         Assert.Equal(expectedReason, decision.Reason);
         Assert.Equal(expectedRate, decision.DesiredSampleRateHz);
-        Assert.Null(decision.DesiredBitsPerSample);
-        var current = new EndpointFormat(expectedRate, 32, 2);
-        Assert.Equal(current, EndpointFormatPolicy.SelectExact(current, [current, new(expectedRate, 24, 2), new(expectedRate, 16, 2)],
-            expectedRate, decision.DesiredBitsPerSample, decision.ManualBitDepth));
+        Assert.Equal(expectedDepth, decision.DesiredBitsPerSample);
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [source], [catalog, catalog with { BitsPerSample = 16 }]).DesiredBitsPerSample);
         Assert.Null(SampleRatePolicy.Evaluate(settings, [source with { IsActive = false }], [catalog, stream]).DesiredBitsPerSample);
         settings.ManualBitDepths[apple] = 24;
         var manual = SampleRatePolicy.Evaluate(settings, [source], [catalog, stream]);
@@ -72,24 +71,52 @@ public sealed class SampleRatePolicyTests
     }
 
     [Theory]
-    [InlineData("fooyin")]
-    [InlineData("vlc")]
-    public void FloatPcmFollowsRateButCannotEstablishTrackDepth(string player)
+    [InlineData("fooyin", true)]
+    [InlineData("fooyin", false)]
+    [InlineData("vlc", true)]
+    [InlineData("vlc", false)]
+    [InlineData("chrome", false)]
+    public void MediaEnginePcmFollowsRateButCannotEstablishTrackDepth(string player, bool floatingPoint)
     {
         var key = $@"C:\Apps\{player}.exe";
         var settings = new SourceSettings { FollowSourceBitDepth = true };
         settings.SelectMaster(key, player);
         var source = Source(key) with { ExecutablePath = key };
         var stream = Observation(settings, 44100) with { SourceKey = key, Provenance = RateProvenance.WasapiStream,
-            BitsPerSample = 32, UsesFloatPcm = true };
+            BitsPerSample = 32, UsesFloatPcm = floatingPoint };
         var automatic = SampleRatePolicy.Evaluate(settings, [source], [stream]);
         Assert.Equal(44100, automatic.DesiredSampleRateHz);
         Assert.Null(automatic.DesiredBitsPerSample);
-        Assert.Equal(32, SampleRatePolicy.Evaluate(settings, [source], [stream with { UsesFloatPcm = false }]).DesiredBitsPerSample);
         settings.ManualBitDepths[key] = 16;
         var manual = SampleRatePolicy.Evaluate(settings, [source], [stream]);
         Assert.Equal(16, manual.DesiredBitsPerSample);
         Assert.True(manual.ManualBitDepth);
+    }
+
+    [Fact]
+    public void GameFollowsUnambiguousIntegerPcmButKeepsDepthWithFloat()
+    {
+        const string game = @"C:\Games\game.exe";
+        var settings = new SourceSettings { FollowSourceBitDepth = true };
+        settings.SelectMaster(game, "Game");
+        var stream = Observation(settings, 48000) with { SourceKey = game, Provenance = RateProvenance.WasapiStream, BitsPerSample = 24 };
+        Assert.Equal(24, SampleRatePolicy.Evaluate(settings, [Source(game)], [stream]).DesiredBitsPerSample);
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [Source(game)], [stream with { UsesFloatPcm = true }]).DesiredBitsPerSample);
+    }
+
+    [Fact]
+    public void FooyinTrackReportWinsOverTheConvertedWindowsStream()
+    {
+        const string key = @"C:\Apps\fooyin.exe";
+        var settings = new SourceSettings { FollowSourceBitDepth = true };
+        settings.SelectMaster(key, "Fooyin");
+        var track = Observation(settings, 96000) with
+        { SourceKey = key, Provenance = RateProvenance.PlayerMetadata, BitsPerSample = 24 };
+        var converted = track with { Provenance = RateProvenance.WasapiStream, SampleRateHz = 48000, BitsPerSample = 32 };
+        var result = SampleRatePolicy.Evaluate(settings, [Source(key)], [converted, track]);
+        Assert.Equal(RateDecisionReason.PlayerMetadata, result.Reason);
+        Assert.Equal(96000, result.DesiredSampleRateHz);
+        Assert.Equal(24, result.DesiredBitsPerSample);
     }
 
     [Fact]

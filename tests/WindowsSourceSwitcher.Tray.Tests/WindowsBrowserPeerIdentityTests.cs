@@ -132,12 +132,13 @@ public sealed class WindowsBrowserPeerIdentityTests
 
     [Theory]
     [InlineData("chrome.exe", "Helium", "chrome.exe", "The Helium Authors", true)]
-    [InlineData("chrome.exe", "Google Chrome", "chrome.exe", "Google LLC", false)]
+    [InlineData("chrome.exe", "Google Chrome", "chrome.exe", "Google LLC", true)]
+    [InlineData("chrome.exe", "Google Chrome", "chrome.exe", "Unknown", false)]
     [InlineData("chrome.exe", "Chromium", "chrome.exe", "The Chromium Authors", false)]
     [InlineData("chrome.exe", "Helium", "chrome.exe", "Unknown", false)]
     [InlineData("chrome.exe", "Helium", "other.exe", "The Helium Authors", false)]
     [InlineData("other.exe", "Helium", "chrome.exe", "The Helium Authors", false)]
-    public void HeliumProductMetadataDoesNotAdmitArbitraryChromeProcesses(string name, string product,
+    public void ChromiumProductMetadataDoesNotAdmitArbitraryChromeProcesses(string name, string product,
         string original, string company, bool accepted) =>
         Assert.Equal(accepted, WindowsBrowserPeerIdentity.IsSupportedBrowserProduct(name, product, original, company));
 

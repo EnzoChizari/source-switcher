@@ -1,8 +1,8 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><title>DX5 known PCM files</title><link rel="stylesheet" href="style.css"></head>
 <body class="fixture"><h1>Known PCM playback test</h1>
-<p><strong>For DAC switching, select Helium as master in Source Switcher.</strong> Follow this tab from the extension popup, then start one player. Look for the file header rate in Sources.</p>
-<p>These players generate 5-second stereo 16-bit PCM WAV files directly at 44.1, 48, 96 and 192 kHz. Playback requires a click and starts at low volume. No AudioContext conversion is used to create the files.</p>
+<p><strong>For DAC switching, select your browser as master in Source Switcher.</strong> Follow this tab from the extension popup, then start one player. Look for the file header format in Sources.</p>
+<p>These players generate five-second stereo PCM WAV files at 44.1, 48, 96 and 192 kHz with 16-, 24- and 32-bit samples. Playback starts at low volume.</p>
 <label><input id="single" type="checkbox" checked> Play one player at a time</label>
 <div id="players"></div><button id="read">Show fixture information</button><pre id="result"></pre>
-<p class="detail">The extension reads the demo files' WAV headers. Helium may resample the audio before sending it to Windows, so the application stream rate can differ.</p>
+<p class="detail">The extension reads the demo files' WAV headers. The browser may convert the audio before sending it to Windows.</p>
 <script src="fixture.js"></script></body></html>

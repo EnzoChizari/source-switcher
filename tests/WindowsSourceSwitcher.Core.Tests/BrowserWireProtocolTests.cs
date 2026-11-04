@@ -16,6 +16,8 @@ public sealed class BrowserWireProtocolTests
     {
         var request = new BrowserProbeRequest(Connection, Request);
         Assert.Equal(request, BrowserWireProtocol.ParseRequest(BrowserWireProtocol.CreateRequest(request)));
+        var withDepth = request with { FileBitDepth = true };
+        Assert.Equal(withDepth, BrowserWireProtocol.ParseRequest(BrowserWireProtocol.CreateRequest(withDepth)));
         Assert.Throws<ArgumentException>(() => BrowserWireProtocol.CreateRequest(new("short", Request)));
         Assert.Throws<InvalidDataException>(() => BrowserWireProtocol.ParseRequest(Encoding.UTF8.GetBytes("{\"protocolVersion\":1,\"kind\":\"command\"}")));
     }
@@ -29,6 +31,27 @@ public sealed class BrowserWireProtocolTests
         Assert.Equal("decoderSnapshot", parsed.Kind);
         Assert.False(parsed.Paused);
         Assert.Equal("pin:document", parsed.DocumentNonce);
+    }
+
+    [Fact]
+    public void FileBitDepthRequiresCurrentDirectHeaderEvidence()
+    {
+        var value = Object();
+        value["evidenceField"] = BrowserWireProtocol.ChromiumHeaderEvidenceField;
+        value["coverage"] = "selected-direct-media";
+        value["outputRateHz"] = null;
+        value["fileBitsPerSample"] = 24;
+        BrowserDecoderMessage Parse() => BrowserWireProtocol.ParseResponse(Encoding.UTF8.GetBytes(value.ToJsonString()));
+        Assert.Equal(24, Parse().FileBitsPerSample);
+        value["paused"] = true;
+        Assert.Throws<InvalidDataException>(Parse);
+        value["paused"] = false;
+        value["fileBitsPerSample"] = 20;
+        Assert.Throws<InvalidDataException>(Parse);
+        value["fileBitsPerSample"] = 24;
+        value["evidenceField"] = BrowserWireProtocol.ChromiumStreamEvidenceField;
+        value["coverage"] = "selected-stream-init";
+        Assert.Throws<InvalidDataException>(Parse);
     }
 
     [Fact]

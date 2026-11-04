@@ -148,6 +148,20 @@ public sealed class BrowserSourcePolicyTests
     }
 
     [Fact]
+    public void CurrentFileHeaderDepthCanSetTheTargetOnlyWhenEnabled()
+    {
+        var settings = Settings();
+        var source = Source();
+        var snapshot = Snapshot() with { EvidenceField = BrowserWireProtocol.ChromiumHeaderEvidenceField, FileBitsPerSample = 24 };
+        var observation = Assert.IsType<RateObservation>(BrowserSourcePolicy.Observe(settings, [source], snapshot, fresh: true));
+        Assert.Equal(24, observation.BitsPerSample);
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [source], [observation]).DesiredBitsPerSample);
+        settings.FollowSourceBitDepth = true;
+        Assert.Equal(24, SampleRatePolicy.Evaluate(settings, [source], [observation]).DesiredBitsPerSample);
+        Assert.Null(BrowserSourcePolicy.Observe(settings, [source], snapshot, fresh: false));
+    }
+
+    [Fact]
     public void BrowserHoldWithoutSuccessfulHistoryDoesNotInventARate()
     {
         var settings = Settings();

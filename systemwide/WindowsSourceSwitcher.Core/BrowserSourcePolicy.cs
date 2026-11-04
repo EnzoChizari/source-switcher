@@ -17,7 +17,8 @@ public static class BrowserSourcePolicy
         var current = sources.Where(source => StringComparer.OrdinalIgnoreCase.Equals(source.Key, settings.SelectedSourceKey)).ToArray();
         if (current.Length != 1 || !current[0].IsActive || string.IsNullOrWhiteSpace(current[0].SessionToken)) return null;
         return new(current[0].Key, current[0].SessionToken, settings.SelectionRevision, rate,
-            RateProvenance.BrowserDecoder, browser.Detail);
+            RateProvenance.BrowserDecoder, browser.Detail,
+            browser.EvidenceField == BrowserWireProtocol.ChromiumHeaderEvidenceField ? browser.FileBitsPerSample : null);
     }
 
     public static RateDecision HoldIfRequired(SourceSettings settings, BrowserDecoderSnapshot browser,

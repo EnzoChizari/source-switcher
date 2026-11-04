@@ -20,6 +20,8 @@
       mediaEpoch: selection?.mediaEpoch ?? 0,
       paused: !!clearReason || (supported && observation.paused === true), decoderSupported: supported,
       decoderRateHz: supported ? observation.rate ?? null : null, outputRateHz: null,
+      ...(request.fileBitDepth === true && supported && !observation.streaming && [16, 24, 32].includes(observation.bits)
+        ? { fileBitsPerSample: observation.bits } : {}),
       conflict: supported && observation.conflict === true,
       evidenceField: supported ? observation.streaming ? streamEvidence : headerEvidence : evidenceField,
       coverage: supported ? observation.streaming ? "selected-stream-init" : "selected-direct-media" : "selected-cdp-target", truncated: false,

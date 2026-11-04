@@ -11,7 +11,7 @@ const flush = async () => { for (let index = 0; index < 12; index++) await new P
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function event() { const listeners = []; return { addListener: listener => listeners.push(listener), emit: (...args) => listeners.map(listener => listener(...args)) }; }
 function protocol() { const context = vm.createContext({ crypto: webcrypto }); vm.runInContext(protocolSource, context); return context.DX5ChromiumProtocol; }
-function background() {
+function background(frameOptions) {
   const ports = [], sent = [], lookups = [], timers = new Map();
   let nextTimer = 0, query = async () => [{ id: 7, title: "Selected media tab", url: "https://must-not-leave.invalid/private" }];
   let get = async id => ({ id, title: "Selected media tab", audible: true, url: "https://must-not-leave.invalid/private" });
@@ -19,7 +19,8 @@ function background() {
   const messages = event(), updated = event(), removed = event(), activated = event(), focused = event(), connected = event();
   const fixtureUrl = "chrome-extension://fixture-id/fixture.html";
   const chrome = {
-    runtime: { id: "fixture-id", getURL: () => fixtureUrl, onMessage: messages, onConnect: connected, connectNative: name => {
+    runtime: { id: "fixture-id", getURL: () => fixtureUrl, getManifest: () => JSON.parse(manifestSource),
+      onMessage: messages, onConnect: connected, connectNative: name => {
       assert.equal(name, "local.dx5_source_switcher");
       const port = { sent: [], disconnected: false, onMessage: event(), onDisconnect: event(),
         postMessage(message) { this.sent.push(message); sent.push(message); },
@@ -31,7 +32,11 @@ function background() {
     windows: { onFocusChanged: focused },
     scripting: { executeScript: (...args) => probe(...args) }
   };
-  const context = vm.createContext({ chrome, crypto: webcrypto,
+  if (frameOptions) {
+    chrome.permissions = { contains: async () => frameOptions.granted, onAdded: event(), onRemoved: event() };
+    chrome.webNavigation = { getAllFrames: async ({ tabId }) => { assert.equal(tabId, 7); return frameOptions.frames; } };
+  }
+  const context = vm.createContext({ chrome, crypto: webcrypto, URL,
     setTimeout: (callback, ms) => { const id = ++nextTimer; timers.set(id, { callback, ms }); return id; },
     clearTimeout: id => timers.delete(id) });
   context.importScripts = (...files) => { for (const file of files) vm.runInContext(file === "protocol.js" ? protocolSource : headerSource, context); };
@@ -44,6 +49,35 @@ function background() {
     timeout: milliseconds => { for (const [id, timer] of [...timers]) if (timer.ms === milliseconds) { timers.delete(id); timer.callback(); } }
   };
 }
+
+test("embedded Kodik probes only allowed followed-tab documents and holds on competing audio", async () => {
+  const frames = [{ frameId: 1, documentId: "kodik", url: "https://player.kodikplayer.com/video" },
+    { frameId: 2, documentId: "unrelated", url: "https://kodikplayer.com.example.invalid/track" }];
+  const state = background({ granted: true, frames });
+  let mainPlaying = false;
+  const documents = new Set();
+  state.setProbe(async ({ target }) => {
+    assert.equal(target.tabId, 7);
+    const id = target.documentIds?.[0] ?? "main";
+    documents.add(id);
+    return [{ result: id === "kodik" ? { rate: 48000, streaming: true } : mainPlaying ? { rate: 44100 } : { paused: true } }];
+  });
+  await state.extension("followActiveTab"); await state.request();
+  assert.deepEqual([...documents].sort(), ["kodik", "main"]);
+  assert.equal(state.sent.at(-1).decoderRateHz, 48000);
+  assert.equal(state.sent.at(-1).evidenceField, "stream-init.header.sampleRate");
+  mainPlaying = true; await state.request();
+  assert.equal(state.sent.at(-1).conflict, true);
+  assert.equal(state.sent.at(-1).decoderRateHz, null);
+
+  const denied = background({ granted: false, frames });
+  denied.setProbe(async ({ target }) => {
+    assert.equal(target.documentIds, undefined);
+    return [{ result: { paused: true } }];
+  });
+  await denied.extension("followActiveTab"); await denied.request();
+  assert.equal(denied.sent.at(-1).decoderRateHz, null);
+});
 
 test("manifest limits script access to user-granted active tabs, without debugger or host permissions", () => {
   const manifest = JSON.parse(manifestSource);
@@ -103,7 +137,7 @@ test("only the owned PCM page can report a playing fixture for its linked tab", 
 test("a native FLAC STREAMINFO header supplies the rate without repeated reads", async () => {
   const data = new Uint8Array(42);
   data.set([102, 76, 97, 67, 128, 0, 0, 34]);
-  new DataView(data.buffer).setUint32(18, 192000 << 12);
+  new DataView(data.buffer).setUint32(18, (192000 << 12) | (23 << 4));
   const media = { currentSrc: "https://example.invalid/track.flac", volume: 1 };
   let requests = 0;
   const context = vm.createContext({ URL, Uint8Array, DataView, AbortSignal,
@@ -116,11 +150,43 @@ test("a native FLAC STREAMINFO header supplies the rate without repeated reads",
     } });
   vm.runInContext(headerSource, context);
   assert.equal((await context.readPlayingMediaHeader()).rate, 192000);
+  assert.equal((await context.readPlayingMediaHeader()).bits, 24);
   assert.equal((await context.readPlayingMediaHeader()).rate, 192000);
   assert.equal(requests, 1);
   media.currentSrc = "https://other.invalid/track.bin";
   assert.equal((await context.readPlayingMediaHeader()).rate, undefined);
   assert.equal(requests, 1);
+});
+test("only integer WAV supplies a depth, including valid bits in an extensible container", async () => {
+  for (const [encoding, container, bits, expected] of [[1, 16, 16, 16], [1, 32, 32, 32], [3, 32, 32, undefined], [0xfffe, 32, 24, 24]]) {
+    const data = new Uint8Array(encoding === 0xfffe ? 60 : 36);
+    const view = new DataView(data.buffer);
+    data.set(Buffer.from("RIFF"), 0); data.set(Buffer.from("WAVEfmt "), 8);
+    view.setUint32(16, data.length - 20, true);
+    view.setUint16(20, encoding, true); view.setUint16(22, 2, true);
+    view.setUint32(24, 96000, true); view.setUint16(32, container / 4, true); view.setUint16(34, container, true);
+    if (encoding === 0xfffe) {
+      view.setUint16(36, 22, true); view.setUint16(38, bits, true);
+      data.set([1, 0, 0, 0, 0, 0, 16, 0, 128, 0, 0, 170, 0, 56, 155, 113], 44);
+    }
+    const media = { currentSrc: "https://example.invalid/track.wav", volume: 1 };
+    const context = vm.createContext({ URL, Uint8Array, DataView, AbortSignal,
+      document: { querySelectorAll: () => [media] }, location: { origin: "https://example.invalid" },
+      fetch: async () => new Response(data) });
+    vm.runInContext(headerSource, context);
+    const format = await context.readPlayingMediaHeader();
+    assert.equal(format.rate, 96000);
+    assert.equal(format.bits, expected);
+  }
+});
+
+test("file depth is sent only to a receiver requesting it and never for stream headers", () => {
+  const request = { connectionNonce: a, requestId: b }, selection = { tabId: 7, documentNonce: a };
+  const header = { rate: 96000, bits: 24 };
+  const reply = (request, evidence) => protocol().reply(request, 1, c, selection, null, evidence);
+  assert.equal(reply(request, header).fileBitsPerSample, undefined);
+  assert.equal(reply({ ...request, fileBitDepth: true }, header).fileBitsPerSample, 24);
+  assert.equal(reply({ ...request, fileBitDepth: true }, { ...header, streaming: true }).fileBitsPerSample, undefined);
 });
 test("a transient header failure retries once per media URL and caches the result", async () => {
   const data = new Uint8Array(42);
@@ -281,17 +347,19 @@ test("native disconnect drops selection and does not reconnect automatically", a
   const state = background(); await state.extension("followActiveTab"); state.ports[0].onDisconnect.emit();
   assert.equal((await state.extension("getStatus")).following, false); assert.equal(state.ports.length, 1);
 });
-test("known-rate fixtures encode actual 44.1/48/96/192 kHz stereo PCM without AudioContext", async () => {
+test("fixtures encode actual 16/24/32-bit stereo PCM at 44.1/48/96/192 kHz", async () => {
   const stubElement = () => ({ append() {}, addEventListener() {}, pause() {} });
   const context = vm.createContext({ document: { createElement: stubElement, getElementById: stubElement }, Blob,
     chrome: { runtime: { connect: () => ({ onDisconnect: event(), postMessage() {} }) } },
     URL: { createObjectURL: () => "blob:owned-fixture" } });
   vm.runInContext(fixtureSource, context);
-  for (const rate of [44100, 48000, 96000, 192000]) {
-    const blob = vm.runInContext(`makeWav(${rate})`, context), bytes = Buffer.from(await blob.arrayBuffer());
+  for (const [rate, bits] of [[44100, 16], [48000, 16], [96000, 24], [192000, 32]]) {
+    const blob = vm.runInContext(`makeWav(${rate}, 1, ${bits})`, context), bytes = Buffer.from(await blob.arrayBuffer());
+    const blockAlign = bits / 4;
     assert.equal(bytes.toString("ascii", 0, 4), "RIFF"); assert.equal(bytes.readUInt16LE(20), 1);
-    assert.equal(bytes.readUInt16LE(22), 2); assert.equal(bytes.readUInt32LE(24), rate); assert.equal(bytes.readUInt32LE(28), rate * 4);
-    assert.equal(bytes.length, 44 + rate * 5 * 4); assert.ok(bytes.subarray(44).some(value => value !== 0));
+    assert.equal(bytes.readUInt16LE(22), 2); assert.equal(bytes.readUInt32LE(24), rate);
+    assert.equal(bytes.readUInt16LE(34), bits); assert.equal(bytes.readUInt32LE(28), rate * blockAlign);
+    assert.equal(bytes.length, 44 + rate * blockAlign); assert.ok(bytes.subarray(44).some(value => value !== 0));
   }
   assert.equal(fixtureSource.includes("AudioContext"), false); assert.equal(fixtureSource.includes("mozRequestDebugInfo"), false);
 });

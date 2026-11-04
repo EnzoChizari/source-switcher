@@ -14,22 +14,22 @@ async function readPlayingMediaHeader(playing = () => [...document.querySelector
 
   let cache = globalThis.__sourceSwitcherMediaHeader;
   if (cache?.media !== media || cache.url !== url.href) {
-    cache = { media, url: url.href, retryAt: Infinity, rate: readHeader() };
+    cache = { media, url: url.href, retryAt: Infinity, format: readHeader() };
     globalThis.__sourceSwitcherMediaHeader = cache;
     // One bounded retry for a transient failure. Unsupported headers stay cached.
     const entry = cache;
-    entry.rate = entry.rate.then(rate => {
-      if (rate === undefined) entry.retryAt = Date.now() + 1000;
-      return rate;
+    entry.format = entry.format.then(format => {
+      if (format === undefined) entry.retryAt = Date.now() + 1000;
+      return format;
     });
   } else if (Date.now() >= cache.retryAt) {
     cache.retryAt = Infinity;
-    cache.rate = readHeader();
+    cache.format = readHeader();
   }
-  const rate = await cache.rate;
+  const format = await cache.format;
   const current = playing();
   return current.length === 1 && current[0] === media && media.currentSrc === url.href && !media.mediaKeys && !media.srcObject
-    ? { rate } : { paused: current.length === 0, conflict: current.length > 1 };
+    ? format ?? {} : { paused: current.length === 0, conflict: current.length > 1 };
 
   async function readHeader() {
     let reader;
@@ -51,8 +51,8 @@ async function readPlayingMediaHeader(playing = () => [...document.querySelector
         const chunk = value.subarray(0, maximum - length);
         bytes.set(chunk, length);
         length += chunk.length;
-        const rate = parse(bytes.subarray(0, length));
-        if (rate) return rate;
+        const format = parse(bytes.subarray(0, length));
+        if (format) return format;
       }
       return null;
     } catch { return undefined; }
@@ -63,23 +63,41 @@ async function readPlayingMediaHeader(playing = () => [...document.querySelector
     const at = (offset, text) => [...text].every((character, index) => bytes[offset + index] === character.charCodeAt(0));
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const valid = rate => rate >= 8000 && rate <= 768000 ? rate : null;
+    const observed = (rate, bits) => valid(rate)
+      ? { rate, ...([16, 24, 32].includes(bits) ? { bits } : {}) } : null;
     if (typeof readStreamHeader === "function") {
       const rate = readStreamHeader(bytes);
-      if (rate) return rate;
+      if (rate) return observed(rate);
     }
     const mp3 = readMp3();
-    if (mp3) return mp3;
+    if (mp3) return observed(mp3);
     // Native FLAC STREAMINFO is the first metadata block, with a 20-bit rate.
     if (bytes.length >= 42 && at(0, "fLaC") && (bytes[4] & 127) === 0
-        && view.getUint32(4) % 0x1000000 === 34)
-      return valid(view.getUint32(18) >>> 12);
+        && view.getUint32(4) % 0x1000000 === 34) {
+      const fields = view.getUint32(18);
+      return observed(fields >>> 12, ((fields >>> 4) & 31) + 1);
+    }
     if (bytes.length < 12 || !at(0, "RIFF") || !at(8, "WAVE")) return null;
     for (let offset = 12; offset + 8 <= bytes.length;) {
       const size = view.getUint32(offset + 4, true);
       if (at(offset, "fmt ")) {
         if (size < 16 || offset + 24 > bytes.length) return null;
-        const format = view.getUint16(offset + 8, true);
-        return format === 1 || format === 3 ? valid(view.getUint32(offset + 12, true)) : null;
+        let encoding = view.getUint16(offset + 8, true);
+        const rate = view.getUint32(offset + 12, true);
+        const container = view.getUint16(offset + 22, true);
+        let bits = container;
+        if (encoding === 0xfffe) {
+          if (size < 40 || offset + 48 > bytes.length || view.getUint16(offset + 24, true) < 22
+              || ![0, 0, 16, 0, 128, 0, 0, 170, 0, 56, 155, 113].every((byte, i) => bytes[offset + 36 + i] === byte))
+            return null;
+          encoding = view.getUint32(offset + 32, true);
+          bits = view.getUint16(offset + 26, true);
+        }
+        if (encoding !== 1 && encoding !== 3) return null;
+        const channels = view.getUint16(offset + 10, true);
+        const align = view.getUint16(offset + 20, true);
+        return observed(rate, encoding === 1 && bits <= container && channels > 0
+          && align === channels * Math.ceil(container / 8) ? bits : null);
       }
       offset += 8 + size + size % 2;
     }

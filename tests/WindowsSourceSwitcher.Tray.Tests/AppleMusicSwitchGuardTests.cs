@@ -43,6 +43,7 @@ public sealed class AppleMusicSwitchGuardTests
         var clock = new Clock();
         var result = await clock.Guard.RunAsync(new Session(), () => true, () => active, () => peak, MustNotWrite, default);
         Assert.Null(result.Applied); Assert.True(result.RetryOnActivity);
+        Assert.True(result.WaitingForSignal);
         Assert.Equal(AppleMusicSwitchGuard.StartupTimeout, clock.Elapsed);
     }
     [Theory]

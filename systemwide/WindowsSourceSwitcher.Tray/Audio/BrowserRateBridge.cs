@@ -47,7 +47,7 @@ internal sealed class BrowserRateBridge : IAsyncDisposable
                 if (_snapshot.State == BrowserDecoderState.Available
                     && System.Diagnostics.Stopwatch.GetElapsedTime(_snapshot.LastReceivedTimestamp) >= BrowserEvidenceGuard.MaximumEvidenceAge)
                 {
-                    _snapshot = _snapshot with { Version = ++_version, DecoderRateHz = null, OutputRateHz = null,
+                    _snapshot = _snapshot with { Version = ++_version, DecoderRateHz = null, OutputRateHz = null, FileBitsPerSample = null,
                         State = BrowserDecoderState.TimedOut, Detail = "Tab decoder evidence expired; holding the confirmed target." };
                     changed = true;
                 }
@@ -79,7 +79,7 @@ internal sealed class BrowserRateBridge : IAsyncDisposable
                 var receiverToken = _stop.Token;
                 var generation = ++_generation;
                 _snapshot = BrowserDecoderSnapshot.Empty with { Version = ++_version, State = BrowserDecoderState.WaitingForHost,
-                    Detail = "Waiting for the installed Firefox/Zen or Helium extension. Choose Follow this tab in its popup." };
+                    Detail = "Waiting for the browser extension. Choose Follow this tab in its popup." };
                 _worker = Task.Run(() => RunAsync(generation, receiverToken));
             }
         }
@@ -135,7 +135,7 @@ internal sealed class BrowserRateBridge : IAsyncDisposable
                 Publish(generation, guard.Snapshot, preservePinnedContext: true);
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    var request = new BrowserProbeRequest(connectionNonce, Guid.NewGuid().ToString("N"));
+                    var request = new BrowserProbeRequest(connectionNonce, Guid.NewGuid().ToString("N"), FileBitDepth: true);
                     guard.BeginRequest(request.RequestId);
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     deadline.CancelAfter(BrowserEvidenceGuard.MaximumEvidenceAge);
@@ -174,7 +174,7 @@ internal sealed class BrowserRateBridge : IAsyncDisposable
         {
             if (!_enabled || _disposed || generation != _generation) return;
             if (preservePinnedContext && _snapshot.IsTabPinned)
-                snapshot = _snapshot with { DecoderRateHz = null, OutputRateHz = null,
+                snapshot = _snapshot with { DecoderRateHz = null, OutputRateHz = null, FileBitsPerSample = null,
                     State = snapshot.State, Detail = snapshot.Detail };
             changed = !_snapshot.HasSameEvidenceAs(snapshot);
             _snapshot = snapshot with { Version = changed ? ++_version : _version };
@@ -189,7 +189,7 @@ internal sealed class BrowserRateBridge : IAsyncDisposable
         {
             if (!_enabled || _disposed || generation != _generation) return;
             var next = _snapshot with { State = state, Detail = detail,
-                DecoderRateHz = null, OutputRateHz = null };
+                DecoderRateHz = null, OutputRateHz = null, FileBitsPerSample = null };
             changed = !_snapshot.HasSameEvidenceAs(next);
             _snapshot = next with { Version = changed ? ++_version : _version };
         }

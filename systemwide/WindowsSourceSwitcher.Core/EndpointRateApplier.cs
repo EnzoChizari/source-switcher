@@ -19,7 +19,7 @@ public sealed record ApplyResult(bool Success, bool Changed, string Detail);
 public static class EndpointRateApplier
 {
     public static ApplyResult Apply(IEndpointRateAdapter adapter, string endpointId, int desiredHz,
-        int? sourceBitsPerSample = null, bool requireExactDepth = false)
+        int? sourceBitsPerSample = null, bool requireExactDepth = false, bool preventDepthReduction = false)
     {
         var changed = false;
         try
@@ -35,11 +35,12 @@ public static class EndpointRateApplier
 
             var mix = adapter.ReadMixFormat(endpointId);
             if (current.SampleRateHz == desiredHz && mix?.SampleRateHz == desiredHz
-                && (sourceBitsPerSample is null || current.BitsPerSample == sourceBitsPerSample))
+                && (sourceBitsPerSample is null || current.BitsPerSample == sourceBitsPerSample
+                    || preventDepthReduction && !requireExactDepth && current.BitsPerSample > sourceBitsPerSample))
                 return new(true, false, $"Endpoint device and shared mix already use {desiredHz} Hz.");
 
             var selected = EndpointFormatPolicy.SelectExact(current, adapter.ReadSupportedFormats(endpointId), desiredHz,
-                sourceBitsPerSample, requireExactDepth);
+                sourceBitsPerSample, requireExactDepth, preventDepthReduction);
             if (selected is null)
                 return new(false, false, sourceBitsPerSample is null
                     ? $"Endpoint does not advertise {desiredHz} Hz at its current {current.BitsPerSample}-bit, {current.Channels}-channel format; no change was attempted."

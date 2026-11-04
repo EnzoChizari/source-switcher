@@ -49,7 +49,7 @@ internal static class BrowserBridgeInstaller
             using var registration = user.CreateSubKey(keyPath, writable: true);
             registration.SetValue(null, manifest, RegistryValueKind.String);
         }
-        return "Helper registered for this user. Load browser/chromium in Helium and choose Follow this tab.";
+        return "Helper registered for this user. Load browser/chromium in Chrome or Helium and choose Follow this tab.";
     }
 
     private static bool IsOwned(string path, bool chromium)

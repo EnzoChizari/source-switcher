@@ -157,7 +157,7 @@ public sealed class BrowserEvidenceGuardTests
         var gecko = Accept(guard, Message());
         var helium = Accept(guard, Message() with { Sequence = 2, EvidenceField = BrowserWireProtocol.ChromiumEvidenceField });
         Assert.Equal(BrowserWireProtocol.ChromiumEvidenceField, helium.EvidenceField);
-        Assert.Contains("Helium", helium.Detail);
+        Assert.Contains("Chromium", helium.Detail);
         Assert.True(helium.Version > gecko.Version);
     }
 

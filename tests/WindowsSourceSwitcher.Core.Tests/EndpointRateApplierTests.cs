@@ -37,6 +37,20 @@ public sealed class EndpointRateApplierTests
         Assert.Equal(0, adapter.SupportReads);
     }
 
+    [Fact]
+    public void AppleCatalogDepthUpshiftDoesNotUndoItOnTheNextTrack()
+    {
+        EndpointFormat low = new(44100, 16, 2);
+        var adapter = new FakeAdapter
+        {
+            Device = low, Mix = low, DeviceAfter = Target, MixAfter = Target, Supported = [low, Target]
+        };
+        Assert.True(EndpointRateApplier.Apply(adapter, EndpointId, 44100, 24, preventDepthReduction: true).Changed);
+        Assert.False(EndpointRateApplier.Apply(adapter, EndpointId, 44100, 16, preventDepthReduction: true).Changed);
+        Assert.Equal([Target], adapter.Writes);
+        Assert.Equal(1, adapter.SupportReads);
+    }
+
     [Theory]
     [InlineData(16, 16, 16)]
     [InlineData(24, 32, 32)]

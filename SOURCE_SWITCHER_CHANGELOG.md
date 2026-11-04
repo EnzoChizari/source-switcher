@@ -1,10 +1,14 @@
 # Source Switcher changelog
 
-## v1.3.3
+## v1.4.0
 
-- Apple Music keeps the current output bit depth in Auto to avoid depth-only playback interruptions. Sample-rate following and manual depth overrides remain available.
-- Source Switcher Tab Link for Helium retries a transient file-header read once without continuously fetching media.
-- Added Helium extension installation and reload steps to the main README.
+- Apple Music Auto can raise the output bit depth from a catalog estimate and keeps that depth across lower-depth tracks to avoid repeat interruptions. Manual depth overrides remain available.
+- Apple Music keeps its controls enabled while waiting for a live signal and shows a steady status during retries.
+- Linked Chrome and Helium tabs can supply the bit depth of supported integer WAV and native FLAC files. Fooyin can use its Now Playing track export. Spotify, VLC, Fooyin, and browsers keep depth when their only evidence is converted Windows PCM.
+- Source Switcher Tab Link supports opt-in Kodik frame inspection, retries one transient file-header read, and distinguishes tab audio activity from available format evidence.
+- Added extension installation, reload steps, and Fooyin setup to the main README.
+- Checks for updates at startup and every 30 minutes while running. Installation still starts from the update dialog.
+- Shows a small amber exclamation badge on the tray icon when an update is available.
 
 ## v1.3.2
 

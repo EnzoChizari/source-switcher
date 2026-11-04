@@ -37,6 +37,8 @@ internal static class Program
                     .WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
                 if (responseBytes is null) return 0;
                 var response = BrowserWireProtocol.ParseResponse(responseBytes);
+                if (response.FileBitsPerSample is not null && !request.FileBitDepth)
+                    throw new InvalidDataException("The receiver did not request file bit depth.");
                 if (response.EvidenceField != expectedEvidenceField
                     && !(expectedEvidenceField == BrowserWireProtocol.ChromiumEvidenceField
                         && response.EvidenceField is BrowserWireProtocol.ChromiumHeaderEvidenceField or BrowserWireProtocol.ChromiumStreamEvidenceField))

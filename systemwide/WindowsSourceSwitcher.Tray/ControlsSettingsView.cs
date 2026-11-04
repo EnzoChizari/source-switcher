@@ -36,7 +36,7 @@ internal sealed class ControlsSettingsView : UserControl
         Text = "Auto-switch by source priority", AccessibleName = "Auto-switch by source priority" };
     private readonly Label _autoFavoriteStatus = new() { AutoSize = true, MaximumSize = new Size(414, 0),
         AccessibleName = "Automatic favorite switching status", Text = "Automatic favorite switching is off." };
-    private readonly CheckBox _browserEnabled = new MinimalCheckBox() { AutoSize = true, Text = "Enable Helium tab integration" };
+    private readonly CheckBox _browserEnabled = new MinimalCheckBox() { AutoSize = true, Text = "Enable browser tab integration" };
     private readonly Button _registerBrowser = new() { AutoSize = true, Text = "Register browser helper" };
     private readonly Label _browserStatus = new() { AutoSize = true, MaximumSize = new Size(414, 0) };
     private readonly Label _outputCapabilities = new() { AutoSize = true, MaximumSize = new Size(414, 0) };
@@ -68,10 +68,12 @@ internal sealed class ControlsSettingsView : UserControl
             Padding = new Padding(16, 0, 16, 16), ColumnCount = 1, RowCount = 0 };
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         TableLayoutPanel? section = null;
-        void Add(Control control)
+        void Add(Control control, bool fixedHeight = false)
         {
             var row = section!.RowCount++;
-            section.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            section.RowStyles.Add(fixedHeight
+                ? new RowStyle(SizeType.Absolute, control.Height + control.Margin.Vertical)
+                : new RowStyle(SizeType.AutoSize));
             section.Controls.Add(control, 0, row);
         }
         void Section(string title)
@@ -100,11 +102,11 @@ internal sealed class ControlsSettingsView : UserControl
         Section("Automatic source selection");
         Add(_autoFavorites);
         Note("Favorites → pinned → regular apps. Automatic handoffs, including Apple Music, take 0.5 s. Player recovery after an output-rate change is separate. Release stops automatic following.");
-        Add(_autoFavoriteStatus);
+        Add(_autoFavoriteStatus, fixedHeight: true);
         _fullscreen.Margin = new Padding(0, 16, 0, 4);
         Add(_fullscreen);
         Note("Prioritize any foreground fullscreen app with active audio. On exit, return to automatic priority or the previous master. Manual selection and Release take precedence.");
-        Add(_fullscreenStatus);
+        Add(_fullscreenStatus, fixedHeight: true);
         Section("Rate detection");
         // The actual preference controls are supplied by SourcePopup, preserving their event ownership.
         _detectionLayout = section!;
@@ -114,7 +116,7 @@ internal sealed class ControlsSettingsView : UserControl
         _detectionLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _detectionLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         Note("Stream rates describe PCM sent to Windows. Apple Music catalog rates are estimates; original media remains unverified.");
-        Note("Auto depth is experimental. Apple Music, Spotify, and floating-point streams keep the current output depth. Use Master bit depth to save an exact value.");
+        Note("Auto depth is experimental. Apple Music catalog estimates can raise the output depth. Spotify and floating-point streams keep the current depth. Use Master bit depth to save an exact value.");
         Section("Output capabilities");
         Add(_outputCapabilities);
         Note("Highest probed PCM rate at each depth for the selected output and channel count. Playback follows the source format within these limits.");
@@ -138,11 +140,11 @@ internal sealed class ControlsSettingsView : UserControl
         Add(_retryHotkeys);
         if (BrowserBridgeInstaller.IsAvailable(AppContext.BaseDirectory))
         {
-            Section("Helium");
+            Section("Browser integration");
             Add(_browserEnabled);
             Add(_registerBrowser);
             Add(_browserStatus);
-            Note("Load the extension from browser/chromium. Choose Helium as master in Sources, then follow a tab in the extension.");
+            Note("Load Source Switcher Tab Link from browser/chromium. Choose Chrome or Helium as master in Sources, then follow a tab.");
         }
         Controls.Add(_layout);
         _hotkeysEnabled.CheckedChanged += (_, _) =>

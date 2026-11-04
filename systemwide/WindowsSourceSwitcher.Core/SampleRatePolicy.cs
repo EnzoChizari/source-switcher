@@ -8,7 +8,8 @@ public enum RateProvenance
     CatalogMetadata,
     VerifiedNative,
     WasapiStream,
-    BrowserDecoder
+    BrowserDecoder,
+    PlayerMetadata
 }
 
 /// <summary>
@@ -38,7 +39,8 @@ public enum RateDecisionReason
     ConflictingObservations,
     WasapiStream,
     BrowserDecoder,
-    BrowserHold
+    BrowserHold,
+    PlayerMetadata
 }
 
 public sealed record RateDecision(int? DesiredSampleRateHz, RateDecisionReason Reason, string Detail,
@@ -100,20 +102,35 @@ public static class SampleRatePolicy
                 ? WithDepth(new(verifiedRates[0], RateDecisionReason.VerifiedNative, "Using a verified native rate from the selected application's current sessions."))
                 : new(held, RateDecisionReason.ConflictingObservations, "Selected application reports conflicting native rates; use a manual override.");
 
-        var browserRates = settings.BrowserRateDetectionEnabled
+        var playerFormats = eligibleObservations.Where(observation => observation.Provenance == RateProvenance.PlayerMetadata).ToArray();
+        var playerRates = playerFormats.Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray();
+        if (playerRates.Length > 1)
+            return new(held, RateDecisionReason.ConflictingObservations, "The player reports conflicting track rates; holding output.");
+        if (playerRates.Length == 1)
+            return WithDepth(new(playerRates[0], RateDecisionReason.PlayerMetadata,
+                "Following Fooyin's current track metadata."), settings.FollowSourceBitDepth ? AgreeOnBitDepth(playerFormats) : null);
+
+        var browserFormats = settings.BrowserRateDetectionEnabled
             ? eligibleObservations.Where(observation => observation.Provenance == RateProvenance.BrowserDecoder)
-                .Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray()
+                .ToArray()
             : [];
-        if (browserRates.Length > 0)
-            return browserRates.Length == 1
-                ? WithDepth(new(browserRates[0], RateDecisionReason.BrowserDecoder, "Following the linked tab's media rate; the browser may resample its output."))
-                : new(held, RateDecisionReason.ConflictingObservations, "Pinned browser tab reports conflicting decoder rates; holding output.");
+        var browserRates = browserFormats.Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray();
+        if (browserRates.Length > 1)
+            return new(held, RateDecisionReason.ConflictingObservations, "Pinned browser tab reports conflicting decoder rates; holding output.");
+        if (browserRates.Length == 1)
+        {
+            var depth = settings.FollowSourceBitDepth ? AgreeOnBitDepth(browserFormats) : null;
+            return WithDepth(new(browserRates[0], RateDecisionReason.BrowserDecoder, depth is null
+                ? "Following the linked tab's media rate; the browser may resample its output."
+                : "Following the linked tab's file rate and bit depth; the browser may convert its output."), depth);
+        }
 
         // Apple Music may keep a fixed Windows PCM rate across hi-res tracks.
         // The explicit catalog option follows track metadata instead, with honest
         // estimate provenance. Missing/stale metadata holds rather than following
         // the endpoint-dependent PCM stream back to the old mixer rate.
-        // Neither catalog nor submitted depth justifies restarting Apple Music.
+        // Catalog precision may justify raising the output depth. The endpoint
+        // policy keeps higher output depths to avoid unnecessary Apple restarts.
         var appleMusic = AppleMusicIdentity.IsOfficialExecutable(source.ExecutablePath);
         if (settings.CatalogRateDetectionEnabled && appleMusic)
         {
@@ -122,7 +139,8 @@ public static class SampleRatePolicy
             return appleRates.Length switch
             {
                 1 => WithDepth(new(appleRates[0], RateDecisionReason.CatalogMetadata,
-                    "Following the opted-in Apple Music catalog rate estimate; the delivered asset is unverified.")),
+                    "Following the opted-in Apple Music catalog rate estimate; the delivered asset is unverified."),
+                    settings.FollowSourceBitDepth ? AgreeOnBitDepth(appleFormats) : null),
                 > 1 => new(held, RateDecisionReason.ConflictingObservations, "Apple Music track metadata is conflicting; retaining the confirmed rate."),
                 _ => new(held, RateDecisionReason.NativeRateUnknown, "Apple Music track estimate is pending or unavailable; holding output. Its Windows PCM stream can remain fixed across tracks.")
             };
@@ -138,14 +156,16 @@ public static class SampleRatePolicy
         if (streamRates.Length == 1)
         {
             var usesFloat = streams.Any(observation => observation.UsesFloatPcm);
-            var spotifyStream = source.ExecutablePath.Replace('/', '\\').EndsWith("\\Spotify.exe", StringComparison.OrdinalIgnoreCase);
-            var bits = settings.FollowSourceBitDepth && !usesFloat && !appleMusic && !spotifyStream ? AgreeOnBitDepth(streams) : null;
-            var detail = settings.FollowSourceBitDepth && appleMusic && depthOverride.Key is null
-                ? "Following Apple Music's Windows stream rate. Auto depth keeps the current output depth."
-                : settings.FollowSourceBitDepth && usesFloat && depthOverride.Key is null
-                ? "Following the submitted sample rate. The floating-point stream leaves track depth unknown. Choose a master bit depth if known."
-                : settings.FollowSourceBitDepth && spotifyStream && depthOverride.Key is null
-                ? "Following Spotify's Windows stream rate. The submitted depth cannot establish track depth. Choose a master bit depth if known."
+            var executableName = source.ExecutablePath[(Math.Max(source.ExecutablePath.LastIndexOf('\\'),
+                source.ExecutablePath.LastIndexOf('/')) + 1)..];
+            // These playback engines may convert the decoded track even when they
+            // submit integer PCM. Their Windows depth cannot select a track depth.
+            var trackDepthUnknown = appleMusic || executableName.ToUpperInvariant() is
+                "SPOTIFY.EXE" or "FOOYIN.EXE" or "VLC.EXE" or "CHROME.EXE" or "HELIUM.EXE"
+                or "MSEDGE.EXE" or "FIREFOX.EXE" or "ZEN.EXE" or "BRAVE.EXE" or "OPERA.EXE" or "VIVALDI.EXE";
+            var bits = settings.FollowSourceBitDepth && !usesFloat && !trackDepthUnknown ? AgreeOnBitDepth(streams) : null;
+            var detail = settings.FollowSourceBitDepth && depthOverride.Key is null && (usesFloat || trackDepthUnknown)
+                ? "Following the submitted sample rate. Track depth is unconfirmed; keeping the current output depth."
                 : "Following the selected app's observed WASAPI PCM stream rate; the app may have resampled its original media.";
             return WithDepth(new(streamRates[0], RateDecisionReason.WasapiStream, detail), bits);
         }
