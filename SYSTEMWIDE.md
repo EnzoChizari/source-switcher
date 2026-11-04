@@ -52,7 +52,7 @@ Use vX.Y.Z with a patch increment for fixes and a minor increment for feature re
 
 On each push to private main, GitHub Actions runs the core, tray, and Helium tests and builds the self-contained x64 app. When the version is newer, the workflow packages the exact tested source and publishes it to the private release feed. Changes using the current version still appear in source history. Check the workflow run for its result.
 
-The download is named `SourceSwitcher-vX.Y.Z-win-x64.zip`. Update to v1.3.1 to migrate from the legacy filename. That release also carries an identical compatibility download for older app builds.
+The download is named `SourceSwitcher-vX.Y.Z-win-x64.zip`. Releases v1.3.1 and v1.3.2 also carry an identical compatibility download for older app builds.
 
 For a manual release fallback, use a fresh build and package directory. From PowerShell 7 on Windows with the .NET SDK, run:
 
@@ -65,7 +65,7 @@ The release script uses the Git Credential Manager sign-in, includes correspondi
 
 ## Bit depth and output capabilities
 
-Settings > Rate detection includes **Follow source bit depth**, off by default. It uses valid bits from unambiguous integer WASAPI PCM. Floating-point streams supply their sample rate while Auto keeps the current output depth. With Apple Music catalog estimates enabled, it follows the estimated bit depth paired with that track's estimated sample rate. Browser-only rate evidence and manual rate overrides retain the current depth unless a manual depth is set. When enabled with usable automatic evidence, the controller chooses the exact source depth if available, then the smallest supported higher depth, then the highest supported lower depth at the same sample rate and channel count. An unsupported rate leaves the format unchanged.
+Settings > Rate detection includes **Follow source bit depth (experimental)**, off by default. It uses valid bits from unambiguous integer WASAPI PCM. Floating-point streams supply their sample rate while Auto keeps the current output depth. With Apple Music catalog estimates enabled, it follows the estimated bit depth paired with that track's estimated sample rate. Browser-only rate evidence and manual rate overrides retain the current depth unless a manual depth is set. When enabled with usable automatic evidence, the controller chooses the exact source depth if available, then the smallest supported higher depth, then the highest supported lower depth at the same sample rate and channel count. An unsupported rate leaves the format unchanged.
 
 Settings > Output capabilities shows the highest PCM rate Windows reports for each depth at the output's current channel count. The probes cover standard rates from 8 to 768 kHz. Windows must still accept and confirm a shared-mode format change. These readings describe Windows and the driver, and cannot verify native track precision or bit-perfect DAC playback.
 

@@ -23,7 +23,7 @@ internal sealed class SourcePopup : Form
     private readonly CheckBox _streamDetection = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
         Text = "Auto-detect application stream rate" };
     private readonly CheckBox _followBits = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
-        Text = "Follow source bit depth (16, 24, 32-bit)" };
+        Text = "Follow source bit depth (experimental)" };
     private readonly Button _refresh = new() { AutoSize = true, Text = "Refresh / retry" };
     private readonly Button _release = new() { AutoSize = true, Text = "Release master" };
     private readonly Button _favorite = new() { AutoSize = true, Text = "☆", AccessibleName = "Favorite selected source" };
@@ -278,7 +278,7 @@ internal sealed class SourcePopup : Form
         _tips.SetToolTip(_catalog, "Apple Music only; this does not detect rates for Spotify, browsers, or other apps. Catalog metadata describes an available lossless asset, not the actual decoded stream. Off by default.");
         _tips.SetToolTip(_streamDetection, "Reads current Windows Audio Service stream formats and observes WASAPI stream changes. Requires administrator or ETW permissions. This is submitted PCM; apps may resample media internally. Unsupported Windows schemas remain unknown.");
         _tips.SetToolTip(_rates, "Overrides are saved by executable path. The list shows rates the output reports for the current or manually chosen depth and channel count.");
-        _tips.SetToolTip(_depths, "Enable Follow source bit depth in Settings to use Auto or a manual depth saved for this master.");
+        _tips.SetToolTip(_depths, "Enable Follow source bit depth in Settings to use experimental Auto or save an exact depth for this master.");
         _tips.SetToolTip(_refresh, "Refresh devices, audio sources and existing stream formats without detaching the live listener. Retry detection if it has stopped.");
         _tips.SetToolTip(_favorite, "Save or remove the highlighted source as a favorite. ★ marks favorites.");
         _favorite.AccessibleDescription = "Toggle favorite for the highlighted source without changing the rate master.";
@@ -559,7 +559,7 @@ internal sealed class SourcePopup : Form
             {
                 _depthSignature = depthSignature;
                 _depths.Items.Clear();
-                _depths.Items.Add(new DepthChoice(null, "Auto"));
+                _depths.Items.Add(new DepthChoice(null, "Auto (experimental)"));
                 foreach (var depth in depths) _depths.Items.Add(new DepthChoice(depth, $"{depth}-bit"));
                 _depths.SelectedItem = _depths.Items.Cast<DepthChoice>().FirstOrDefault(choice => choice.Bits == savedDepth);
             }

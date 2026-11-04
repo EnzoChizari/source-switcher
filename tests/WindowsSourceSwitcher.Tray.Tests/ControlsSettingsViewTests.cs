@@ -185,6 +185,7 @@ public sealed class ControlsSettingsViewTests
         Assert.Equal(["Sources", "Mixer", "Settings", "Diagnostics"], tabs.TabPages.Cast<TabPage>().Select(page => page.Text));
         popup.SelectControlsTab();
         Assert.Equal("Settings", tabs.SelectedTab!.Text);
+        Assert.Contains(Find<CheckBox>(popup), checkbox => checkbox.Text == "Follow source bit depth (experimental)");
         Assert.False(popup.MixerVisible);
         popup.SelectMixerTab();
         Assert.Equal("Mixer", tabs.SelectedTab!.Text);
@@ -235,6 +236,8 @@ public sealed class ControlsSettingsViewTests
         AudioFormatCandidate[] formats = [new(48000, 24, 2), new(96000, 24, 2), new(192000, 16, 2), new(768000, 24, 6)];
         popup.Render([], [], formats, formats[0], settings, "Status", "Evidence", false);
         var rate = Find<ComboBox>(popup).Single(combo => combo.AccessibleName == "Master's target rate");
+        var depth = Find<ComboBox>(popup).Single(combo => combo.AccessibleName == "Master bit depth");
+        Assert.Equal("Auto (experimental)", depth.Items[0]?.ToString());
         Assert.Equal(3, rate.Items.Count);
         Assert.DoesNotContain(rate.Items.Cast<object>(), item => item.ToString()!.Contains("192 kHz") || item.ToString()!.Contains("768 kHz"));
         Assert.Null(rate.SelectedItem);

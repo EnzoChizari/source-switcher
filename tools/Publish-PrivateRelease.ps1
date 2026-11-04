@@ -82,8 +82,8 @@ if ($release) {
     $release = Invoke-RestMethod "$api/releases" -Method Post -Headers $headers -ContentType 'application/json' -Body ($draft | ConvertTo-Json) -TimeoutSec 30
 }
 $assetNames = @($packageName)
-# The transition release is discoverable by builds that know only the previous asset name.
-if ($version -ceq '1.3.1') { $assetNames += 'SourceSwitcher-win-x64.zip' }
+# Transition releases remain discoverable by builds that know only the previous asset name.
+if ($version -in '1.3.1', '1.3.2') { $assetNames += 'SourceSwitcher-win-x64.zip' }
 $packageBytes = (Get-Item -LiteralPath $package).Length
 foreach ($assetName in $assetNames) {
     $asset = $release.assets | Where-Object { $_.name -ceq $assetName } | Select-Object -First 1
@@ -93,6 +93,7 @@ foreach ($assetName in $assetNames) {
     }
     if (!$asset) {
         $upload = "https://uploads.github.com/repos/$slug/releases/$($release.id)/assets?name=$assetName"
+        if ($assetName -cne $packageName) { $upload += '&label=Compatibility%20copy%20for%20older%20updaters' }
         $asset = Invoke-RestMethod $upload -Method Post -Headers $headers -InFile $package -ContentType 'application/zip' -TimeoutSec 300
     }
     if ($asset.name -cne $assetName -or $asset.state -ne 'uploaded' -or $asset.size -ne $packageBytes -or $asset.digest -ne $digest) {

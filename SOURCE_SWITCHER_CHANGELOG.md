@@ -1,5 +1,9 @@
 # Source Switcher changelog
 
+## v1.3.2
+
+- Marked automatic bit-depth selection as experimental in Settings and Sources. Manual depth overrides remain available.
+
 ## v1.3.1
 
 - Windows x64 release ZIP filenames include the version, such as SourceSwitcher-v1.3.1-win-x64.zip.
