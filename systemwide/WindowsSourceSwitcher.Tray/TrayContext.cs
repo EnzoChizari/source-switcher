@@ -364,7 +364,7 @@ internal sealed class TrayContext : ApplicationContext
             timeout.CancelAfter(TimeSpan.FromSeconds(12));
             var token = await GitHubUpdateFeed.ReadCredentialAsync(timeout.Token);
             if (token is null)
-                status = "GitHub sign-in is required. See START HERE.txt for private repository setup.";
+                status = "GitHub sign-in is required. In Git for Windows, run git credential-manager github login --browser, then check again.";
             else if (install && _availableUpdate is { } release)
             {
                 timeout.CancelAfter(TimeSpan.FromMinutes(5));

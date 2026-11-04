@@ -4,6 +4,8 @@
 
 - Windows x64 release ZIP filenames include the version, such as SourceSwitcher-v1.3.1-win-x64.zip.
 - This release also includes a compatibility copy so earlier builds can update in the app.
+- The update screen shows the GitHub sign-in command when a credential is missing.
+- Settings reserves room for automatic-source status so the Rate detection card stays steady.
 
 ## v1.3.0
 

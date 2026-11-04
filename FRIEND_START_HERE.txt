@@ -48,6 +48,11 @@ Use a dedicated folder containing the extracted app.
 
 The release feed is private. Sign in through Git Credential Manager on
 a PC that has Git for Windows, using an account granted repository access.
+Accept the invitation in GitHub, then run this in a Windows terminal:
+
+    git credential-manager github login --browser
+
+Sign in with your own invited GitHub account and select Check for updates.
 Alternatively, add a Generic Credential in Windows Credential Manager.
 Use SourceSwitcher:GitHub:EnzoChizari/source-switcher as the address,
 your GitHub username, and a repository-scoped Contents read token as the

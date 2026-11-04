@@ -40,6 +40,7 @@ internal sealed class ControlsSettingsView : UserControl
     private readonly Button _registerBrowser = new() { AutoSize = true, Text = "Register browser helper" };
     private readonly Label _browserStatus = new() { AutoSize = true, MaximumSize = new Size(414, 0) };
     private readonly Label _outputCapabilities = new() { AutoSize = true, MaximumSize = new Size(414, 0) };
+    private readonly ToolTip _statusTips = new();
     private readonly Label _updateStatus = new() { AutoSize = true, MaximumSize = new Size(414, 0), Text = "Ready to check for updates." };
     private readonly Button _checkUpdate = new() { AutoSize = true, Text = "Check for updates" };
     private readonly Button _installUpdate = new() { AutoSize = true, Text = "Update", Enabled = false };
@@ -56,8 +57,13 @@ internal sealed class ControlsSettingsView : UserControl
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
         Dock = DockStyle.Fill;
         AutoScroll = true;
-        _autoFavoriteStatus.MinimumSize = new Size(0, 2 * _autoFavoriteStatus.Font.Height + 4);
-        _fullscreenStatus.MinimumSize = new Size(0, 2 * _fullscreenStatus.Font.Height + 4);
+        foreach (var status in new[] { _autoFavoriteStatus, _fullscreenStatus })
+        {
+            status.AutoSize = false;
+            status.AutoEllipsis = true;
+            status.Dock = DockStyle.Top;
+            status.Height = 2 * status.Font.Height + 4;
+        }
         _layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true,
             Padding = new Padding(16, 0, 16, 16), ColumnCount = 1, RowCount = 0 };
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -178,8 +184,20 @@ internal sealed class ControlsSettingsView : UserControl
     public void SetHotkeyStatus(string status) => _hotkeyStatus.Text = status;
     public void SetOutputCapabilities(string capabilities) => _outputCapabilities.Text = capabilities;
     public void SetBrowserStatus(string status) => _browserStatus.Text = status;
-    public void SetFavoriteAutoSwitchStatus(string status) => _autoFavoriteStatus.Text = status;
-    public void SetFullscreenStatus(string status) => _fullscreenStatus.Text = status;
+    public void SetFavoriteAutoSwitchStatus(string status) => SetPriorityStatus(_autoFavoriteStatus, status);
+    public void SetFullscreenStatus(string status) => SetPriorityStatus(_fullscreenStatus, status);
+    private void SetPriorityStatus(Label label, string status)
+    {
+        if (label.Text == status) return;
+        label.Text = status;
+        _statusTips.SetToolTip(label, status);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _statusTips.Dispose();
+        base.Dispose(disposing);
+    }
     private static void AddShortcut(TableLayoutPanel layout, int row, string chord, string action)
     {
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
