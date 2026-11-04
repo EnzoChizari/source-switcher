@@ -1,5 +1,10 @@
 # Source Switcher changelog
 
+## v1.2.2
+
+- The target-rate dropdown shows only rates supported by the selected output at its current bit depth and channel count.
+- Unavailable saved overrides are explained below the dropdown and can be replaced by Auto or a supported rate.
+
 ## v1.2.1
 
 - Review the changelog before downloading an update. Choose Close to come back later or Update to install it.

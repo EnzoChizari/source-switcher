@@ -10,7 +10,8 @@ internal sealed class SourcePopup : Form
     private readonly ComboBox _devices = new MinimalComboBox() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly ListView _sources = new MinimalListView() { View = View.Details, FullRowSelect = true, MultiSelect = false,
         HideSelection = false, Dock = DockStyle.Fill, HeaderStyle = ColumnHeaderStyle.Nonclickable };
-    private readonly ComboBox _rates = new MinimalComboBox() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
+    private readonly ComboBox _rates = new MinimalComboBox() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill,
+        AccessibleName = "Selected app's target rate" };
     private readonly Label _master = new() { AutoSize = true, MaximumSize = new Size(430, 0), Text = "Master: choose an app below" };
     private readonly Label _format = new() { AutoSize = true, Text = "Output: choose a Windows playback device" };
     private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(430, 0), Text = "Select an output, then an app playing on it." };
@@ -531,9 +532,7 @@ internal sealed class SourcePopup : Form
                 _rates.Items.Clear();
                 _rates.Items.Add(new RateChoice(null, autoMode));
                 foreach (var hz in rates) _rates.Items.Add(new RateChoice(hz, FormatRate(hz) + " — manual override"));
-                if (manual is { } unavailable && !rates.Contains(unavailable))
-                    _rates.Items.Add(new RateChoice(unavailable, FormatRate(unavailable) + " — saved, currently unsupported"));
-                _rates.SelectedItem = _rates.Items.Cast<RateChoice>().First(r => r.Rate == manual);
+                _rates.SelectedItem = _rates.Items.Cast<RateChoice>().FirstOrDefault(r => r.Rate == manual);
             }
             _enabled.Checked = settings.SwitchingEnabled;
             _catalog.Checked = settings.CatalogRateDetectionEnabled;
@@ -551,7 +550,9 @@ internal sealed class SourcePopup : Form
                 && (selectedSource is null || selectedSource.CanPersist)
                 && (_masterIsPinned || settings.PinnedSources.Count < SourceFavorites.MaxFavorites);
             _status.Text = status;
-            _evidence.Text = evidence;
+            _evidence.Text = manual is { } savedRate && !rates.Contains(savedRate)
+                ? $"Saved override {FormatRate(savedRate)} is unavailable on this output. Choose Auto or an available rate."
+                : evidence;
         }
         finally { _rendering = false; }
     }

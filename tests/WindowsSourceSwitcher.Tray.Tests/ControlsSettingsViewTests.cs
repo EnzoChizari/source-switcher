@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Windows.Forms;
+using WindowsLosslessSwitcher.Models;
 using WindowsSourceSwitcher.Core;
 using Xunit;
 
@@ -219,6 +220,31 @@ public sealed class ControlsSettingsViewTests
         var buttons = Find<Button>(dialog).ToArray();
         Assert.Equal(DialogResult.Cancel, Assert.Single(buttons, button => button.Text == "Close").DialogResult);
         Assert.Equal(DialogResult.OK, Assert.Single(buttons, button => button.Text == "Update").DialogResult);
+    });
+
+    [Fact]
+    public void Rate_dropdown_omits_formats_unsupported_at_the_current_depth_and_channel_count() => OnSta(() =>
+    {
+        using var popup = new SourcePopup();
+        var settings = new SourceSettings();
+        const string key = @"C:\Players\player.exe";
+        settings.SelectMaster(key, "Player");
+        settings.ManualSampleRatesHz[key] = 768000;
+        var requests = new List<int?>();
+        popup.RateSelected += requests.Add;
+        AudioFormatCandidate[] formats = [new(48000, 24, 2), new(96000, 24, 2), new(192000, 16, 2), new(768000, 24, 6)];
+        popup.Render([], [], formats, formats[0], settings, "Status", "Evidence", false);
+        var rate = Find<ComboBox>(popup).Single(combo => combo.AccessibleName == "Selected app's target rate");
+        Assert.Equal(3, rate.Items.Count);
+        Assert.DoesNotContain(rate.Items.Cast<object>(), item => item.ToString()!.Contains("192 kHz") || item.ToString()!.Contains("768 kHz"));
+        Assert.Null(rate.SelectedItem);
+        Assert.Equal(768000, settings.ManualSampleRatesHz[key]);
+        Assert.Contains(Find<Label>(popup), label => label.Text.Contains("Saved override 768 kHz is unavailable"));
+        Assert.Empty(requests);
+        rate.SelectedIndex = 0;
+        Assert.Equal([null], requests);
+        popup.Render([], [], formats, formats[2], settings, "Status", "Evidence", false);
+        Assert.Contains(rate.Items.Cast<object>(), item => item.ToString()!.Contains("192 kHz"));
     });
 
     private static CheckBox Hotkeys(Control view) => Find<CheckBox>(view).Single(control => control.AccessibleName == "Enable global hotkeys");
