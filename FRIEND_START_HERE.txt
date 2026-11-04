@@ -31,9 +31,9 @@ It uses observed 16-, 24-, or 32-bit integer PCM. Float streams supply
 their sample rate while Auto retains the current depth. With Apple Music
 catalog estimates enabled, it uses that track estimate's bit depth.
 When depth is unknown or the checkbox is off, the app keeps the current depth.
-Use Master bit depth in Sources to save a depth for the current master. Spotify
-can send a 32-bit Windows stream even when the original track is 16 or 24 bit.
-Spotify Auto retains the output depth in that case.
+Use Master bit depth in Sources to save a depth for the current master.
+Spotify Auto retains the output depth because its Windows stream can
+have a different bit depth from the original track.
 Settings > Output capabilities shows the highest detected rate at each depth
 for your selected output. The maximum is a capability, not a playback target.
 

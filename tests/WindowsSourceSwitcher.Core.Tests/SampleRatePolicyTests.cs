@@ -42,20 +42,23 @@ public sealed class SampleRatePolicyTests
         Assert.Null(SampleRatePolicy.Evaluate(settings, [source], [catalog, stream]).DesiredBitsPerSample);
     }
 
-    [Fact]
-    public void SpotifyThirtyTwoBitStreamLeavesDepthUnchangedUnlessUserOverridesIt()
+    [Theory]
+    [InlineData(16)]
+    [InlineData(24)]
+    [InlineData(32)]
+    public void SpotifyStreamLeavesDepthUnchangedUnlessUserOverridesIt(int submittedDepth)
     {
         var settings = new SourceSettings { FollowSourceBitDepth = true };
         const string spotify = @"C:\Apps\Spotify.exe";
         settings.SelectMaster(spotify, "Spotify");
         var source = Source(spotify) with { ExecutablePath = spotify };
-        var stream = Observation(settings, 44100) with { SourceKey = spotify, Provenance = RateProvenance.WasapiStream, BitsPerSample = 32 };
+        var stream = Observation(settings, 44100) with { SourceKey = spotify, Provenance = RateProvenance.WasapiStream, BitsPerSample = submittedDepth };
         var auto = SampleRatePolicy.Evaluate(settings, [source], [stream]);
         Assert.Equal(44100, auto.DesiredSampleRateHz);
         Assert.Null(auto.DesiredBitsPerSample);
-        settings.ManualBitDepths[spotify] = 16;
+        settings.ManualBitDepths[spotify] = 24;
         var manual = SampleRatePolicy.Evaluate(settings, [source], [stream]);
-        Assert.Equal(16, manual.DesiredBitsPerSample);
+        Assert.Equal(24, manual.DesiredBitsPerSample);
         Assert.True(manual.ManualBitDepth);
         settings.FollowSourceBitDepth = false;
         Assert.Null(SampleRatePolicy.Evaluate(settings, [source], [stream]).DesiredBitsPerSample);

@@ -7,6 +7,7 @@
 - The update screen shows the GitHub sign-in command when a credential is missing.
 - Settings reserves room for automatic-source status so the Rate detection card stays steady.
 - Float streams from Fooyin, VLC, and other players still supply the sample rate. Auto keeps the current bit depth until there is usable evidence or a manual override.
+- Spotify's submitted stream depth remains visible in Diagnostics. Auto holds the current depth because Spotify can convert the original track before submitting it.
 
 ## v1.3.0
 
