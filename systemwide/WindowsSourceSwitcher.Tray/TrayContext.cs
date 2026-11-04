@@ -1751,9 +1751,9 @@ internal sealed class TrayContext : ApplicationContext
                 : "Not observed"),
             new("Follow bit depth", _settings.FollowSourceBitDepth
                 ? _lastDecision?.DesiredBitsPerSample is { } wantedBits
-                    ? $"On · {wantedBits}-bit " + (_lastDecision.ManualBitDepth ? "manual override"
-                        : _lastDecision.Reason == RateDecisionReason.CatalogMetadata ? "catalog estimate" : "submitted PCM")
-                    : "On · waiting for bit-depth evidence"
+                    ? $"On · {wantedBits}-bit " + (_lastDecision.ManualBitDepth ? "manual override" : "submitted PCM")
+                    : source?.SupportsAutomaticRate == true ? "On · keeping output depth for Apple Music"
+                    : "On · keeping output depth until usable evidence"
                 : "Off · keep output depth"),
             new("Windows mix", Format(_snapshot.Mix)),
             new("Endpoint format", Format(_snapshot.Current)),

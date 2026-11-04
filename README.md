@@ -4,17 +4,26 @@
 
 Source Switcher lives in the Windows notification area. Choose a playback device and a source app, then follow the app's observed sample rate or set a rate yourself. If you regularly move between a music player, a video player, and other desktop apps, you can set priorities so the source changes with your listening.
 
-[Download](https://github.com/EnzoChizari/source-switcher/releases) · [Quick start](#quick-start) · [How switching works](#how-switching-works) · [Troubleshooting](#troubleshooting) · [Changelog](SOURCE_SWITCHER_CHANGELOG.md)
+[Download](https://github.com/EnzoChizari/source-switcher/releases) · [Quick start](#quick-start) · [Install the Helium extension](#install-the-helium-extension) · [How switching works](#how-switching-works) · [Troubleshooting](#troubleshooting) · [Changelog](SOURCE_SWITCHER_CHANGELOG.md)
 
 ## Quick start
 
 Use the self-contained release ZIP on a Windows x64 PC. The ZIP includes the .NET desktop runtime.
 
 1. Download the Windows x64 ZIP from [GitHub Releases](https://github.com/EnzoChizari/source-switcher/releases) and extract the entire archive to a folder.
-2. Run `WindowsSourceSwitcher.Tray.exe` and click its icon in the Windows notification area. Check the hidden-icons menu if you don't see it.
+2. Run `SourceSwitcher.exe` and click its icon in the Windows notification area. Check the hidden-icons menu if you don't see it.
 3. In **Sources**, choose the DAC or playback device you want Source Switcher to control.
 4. Start playback in a source app, then double-click its row in **Sources** to make it the master. The master is the app whose format drives the selected output.
 5. Leave the rate on **Auto** to follow the observed sample rate, or choose one of the rates supported by the selected output. Open **Diagnostics** to see the observed format and the controller's status.
+
+## Install the Helium extension
+
+1. In Source Switcher, open **Settings → Helium**. Enable **Helium tab integration** and click **Register browser helper**.
+2. In Helium, open `chrome://extensions` and turn on **Developer mode**. Click **Load unpacked** and select `browser/chromium` inside the extracted Source Switcher folder.
+3. On the tab you want to use, open **Source Switcher Tab Link** from Helium's Extensions menu. Click **Follow this tab**, or enable **Automatically follow the active tab**. Start playback and double-click Helium (sometimes listed as `chrome`) in **Sources**.
+4. To test the link, choose **Open PCM playback demo** in the extension. Follow the demo tab and play one test at a time.
+
+After an app update, click **Reload** on the extension's card at `chrome://extensions` and reopen the media tab. Register the helper again if you move the app. On a new website, open the extension once to grant temporary access. Unsupported players can use the Windows stream rate when available. [Extension details](browser/chromium/README.md)
 
 ## Choose a switching mode
 
@@ -33,7 +42,7 @@ Use the self-contained release ZIP on a Windows x64 PC. The ZIP includes the .NE
 
 **Format detection.** Source Switcher observes PCM streams submitted to Windows and uses supported formats for the selected shared-mode playback device. If the observation is missing, stale, ambiguous, or unsupported, it can hold the last confirmed format. Automatic rate detection uses Windows audio tracing and may require administrator elevation or appropriate tracing permissions.
 
-**Sample rate and bit depth are separate.** An app that submits floating-point PCM can still provide a usable sample rate. Experimental automatic bit depth may hold the current setting when the evidence is insufficient. A saved manual override gives you control when you know which depth you want.
+**Sample rate and bit depth are separate.** Apple Music, Spotify, and floating-point streams keep the current depth in Auto. A saved manual override gives you control when you know which depth you want.
 
 **Mixer.** View session activity and adjust volume or mute for supported sessions on the selected output. Some sessions are read-only when the app cannot safely identify or control them. The meters show Windows signal activity.
 

@@ -1,5 +1,11 @@
 # Source Switcher changelog
 
+## v1.3.3
+
+- Apple Music keeps the current output bit depth in Auto to avoid depth-only playback interruptions. Sample-rate following and manual depth overrides remain available.
+- Source Switcher Tab Link for Helium retries a transient file-header read once without continuously fetching media.
+- Added Helium extension installation and reload steps to the main README.
+
 ## v1.3.2
 
 - Marked automatic bit-depth selection as experimental in Settings and Sources. Manual depth overrides remain available.

@@ -23,23 +23,30 @@ public sealed class SampleRatePolicyTests
         Assert.Null(SampleRatePolicy.Evaluate(settings, [Source()], [stream]).DesiredBitsPerSample);
     }
 
-    [Fact]
-    public void AppleUsesRateAndBitDepthFromTheSameOptedInCatalogEstimate()
+    [Theory]
+    [InlineData(true, 192000, RateDecisionReason.CatalogMetadata)]
+    [InlineData(false, 48000, RateDecisionReason.WasapiStream)]
+    public void AppleAutoKeepsDepthWhileFollowingRate(bool catalogEnabled, int expectedRate, RateDecisionReason expectedReason)
     {
-        var settings = new SourceSettings { CatalogRateDetectionEnabled = true, FollowSourceBitDepth = true };
+        var settings = new SourceSettings { CatalogRateDetectionEnabled = catalogEnabled, FollowSourceBitDepth = true };
         const string apple = @"C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.2.3.4_x64__nzyj5cx40ttqa\AppleMusic.exe";
         settings.SelectMaster(apple, "Apple Music");
         var source = Source(apple) with { ExecutablePath = apple };
         var catalog = Observation(settings, 192000) with { SourceKey = apple, Provenance = RateProvenance.CatalogMetadata, BitsPerSample = 24 };
         var stream = catalog with { Provenance = RateProvenance.WasapiStream, SampleRateHz = 48000, BitsPerSample = 16 };
         var decision = SampleRatePolicy.Evaluate(settings, [source], [catalog, stream]);
-        Assert.Equal(RateDecisionReason.CatalogMetadata, decision.Reason);
-        Assert.Equal(192000, decision.DesiredSampleRateHz);
-        Assert.Equal(24, decision.DesiredBitsPerSample);
-        Assert.Null(SampleRatePolicy.Evaluate(settings, [source], [catalog, catalog with { BitsPerSample = 16 }]).DesiredBitsPerSample);
+        Assert.Equal(expectedReason, decision.Reason);
+        Assert.Equal(expectedRate, decision.DesiredSampleRateHz);
+        Assert.Null(decision.DesiredBitsPerSample);
+        var current = new EndpointFormat(expectedRate, 32, 2);
+        Assert.Equal(current, EndpointFormatPolicy.SelectExact(current, [current, new(expectedRate, 24, 2), new(expectedRate, 16, 2)],
+            expectedRate, decision.DesiredBitsPerSample, decision.ManualBitDepth));
         Assert.Null(SampleRatePolicy.Evaluate(settings, [source with { IsActive = false }], [catalog, stream]).DesiredBitsPerSample);
-        settings.FollowSourceBitDepth = false;
-        Assert.Null(SampleRatePolicy.Evaluate(settings, [source], [catalog, stream]).DesiredBitsPerSample);
+        settings.ManualBitDepths[apple] = 24;
+        var manual = SampleRatePolicy.Evaluate(settings, [source], [catalog, stream]);
+        Assert.Equal(expectedRate, manual.DesiredSampleRateHz);
+        Assert.Equal(24, manual.DesiredBitsPerSample);
+        Assert.True(manual.ManualBitDepth);
     }
 
     [Theory]

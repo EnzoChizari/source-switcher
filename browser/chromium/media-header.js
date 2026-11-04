@@ -12,10 +12,21 @@ async function readPlayingMediaHeader(playing = () => [...document.querySelector
       || (url.origin !== location.origin && !/\.(wav|flac|mp3|m4a|mp4|webm)$/i.test(url.pathname))) return {};
   const maximum = /\.(wav|flac|mp3)$/i.test(url.pathname) ? 4096 : 65536;
 
-  const cache = globalThis.__sourceSwitcherMediaHeader;
-  const rate = cache?.media === media && cache.url === url.href
-    ? await cache.rate
-    : await (globalThis.__sourceSwitcherMediaHeader = { media, url: url.href, rate: readHeader() }).rate;
+  let cache = globalThis.__sourceSwitcherMediaHeader;
+  if (cache?.media !== media || cache.url !== url.href) {
+    cache = { media, url: url.href, retryAt: Infinity, rate: readHeader() };
+    globalThis.__sourceSwitcherMediaHeader = cache;
+    // One bounded retry for a transient failure. Unsupported headers stay cached.
+    const entry = cache;
+    entry.rate = entry.rate.then(rate => {
+      if (rate === undefined) entry.retryAt = Date.now() + 1000;
+      return rate;
+    });
+  } else if (Date.now() >= cache.retryAt) {
+    cache.retryAt = Infinity;
+    cache.rate = readHeader();
+  }
+  const rate = await cache.rate;
   const current = playing();
   return current.length === 1 && current[0] === media && media.currentSrc === url.href && !media.mediaKeys && !media.srcObject
     ? { rate } : { paused: current.length === 0, conflict: current.length > 1 };
@@ -27,8 +38,9 @@ async function readPlayingMediaHeader(playing = () => [...document.querySelector
         headers: { Range: `bytes=0-${maximum - 1}` },
         credentials: "omit", referrerPolicy: "no-referrer", redirect: "error", signal: AbortSignal.timeout(900)
       });
-      if (!response.body) return null;
-      reader = response.body.getReader();
+      if (response.body) reader = response.body.getReader();
+      if (response.status >= 500) return undefined;
+      if (!reader) return null;
       if (!(response.status === 200 || response.status === 206
           && /^bytes 0-\d+\/(?:\d+|\*)$/i.test(response.headers.get("Content-Range") ?? ""))) return null;
       const bytes = new Uint8Array(maximum);
@@ -43,7 +55,7 @@ async function readPlayingMediaHeader(playing = () => [...document.querySelector
         if (rate) return rate;
       }
       return null;
-    } catch { return null; }
+    } catch { return undefined; }
     finally { if (reader) void reader.cancel().catch(() => {}); }
   }
 

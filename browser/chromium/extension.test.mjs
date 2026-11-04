@@ -122,6 +122,36 @@ test("a native FLAC STREAMINFO header supplies the rate without repeated reads",
   assert.equal((await context.readPlayingMediaHeader()).rate, undefined);
   assert.equal(requests, 1);
 });
+test("a transient header failure retries once per media URL and caches the result", async () => {
+  const data = new Uint8Array(42);
+  data.set([102, 76, 97, 67, 128, 0, 0, 34]);
+  new DataView(data.buffer).setUint32(18, 96000 << 12);
+  const media = { currentSrc: "https://example.invalid/track.flac", volume: 1 };
+  let now = 0, requests = 0;
+  const context = vm.createContext({ URL, Uint8Array, DataView, AbortSignal, Date: { now: () => now },
+    document: { querySelectorAll: () => [media] }, location: { origin: "https://example.invalid" },
+    fetch: async () => {
+      requests++;
+      return requests === 2 ? new Response(data) : new Response(null, { status: 503 });
+    } });
+  vm.runInContext(headerSource, context);
+  const read = () => context.readPlayingMediaHeader();
+  assert.equal((await read()).rate, undefined);
+  now = 999;
+  assert.equal((await read()).rate, undefined);
+  assert.equal(requests, 1);
+  now = 1000;
+  const retried = await Promise.all([read(), read()]);
+  assert.deepEqual(retried.map(result => result.rate), [96000, 96000]);
+  assert.equal(requests, 2);
+  media.currentSrc = "https://example.invalid/other.flac";
+  await read();
+  now = 2000;
+  await read();
+  now = 10000;
+  await read();
+  assert.equal(requests, 4);
+});
 test("requests require exact protocol, kind and 128-bit lowercase receiver nonces", () => {
   const parse = protocol().isRequest, valid = { protocolVersion: 1, kind: "request", connectionNonce: a, requestId: b };
   assert.equal(parse(valid), true);
