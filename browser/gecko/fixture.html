@@ -1,0 +1,7 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>DX5 known decoder rates</title><link rel="stylesheet" href="style.css"></head>
+<body class="fixture"><h1>Known decoder-rate test</h1>
+<p>These players generate 5-second stereo 16-bit PCM WAV files directly at 44.1, 48, 96 and 192 kHz. Playback requires a click and starts at low volume. No AudioContext conversion is involved.</p>
+<label><input id="single" type="checkbox" checked> Play one player at a time</label>
+<div id="players"></div><button id="read">Read decoder diagnostics</button><pre id="result"></pre>
+<p class="detail">The extension's own test page can read the Gecko API directly. For complete Follow this tab testing, serve this folder on localhost and use the extension button on that ordinary page. The in-page button on an ordinary page may lack extension privilege.</p>
+<script src="fixture.js"></script></body></html>

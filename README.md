@@ -1,4 +1,18 @@
-# Windows Lossless Switcher
+Current patch **0.10.3**: short-window navigation stays reachable with adaptive spacing, a hidden footer when constrained, and keyboard/focus scrolling. Reliability checks cover actual native session creation/closure and already-playing subscription; resource observations retain their measured limits.
+
+# DX5 Source Switcher 0.10.3
+
+This GPL fork of [WindowsLosslessSwitcher](https://github.com/jordanmgibson/WindowsLosslessSwitcher) adds a separate Windows tray audio controller: select a persistent rate master, mix application volumes, follow favorites/pins/fullscreen applications and inspect Windows audio evidence.
+
+The current release adds power-resume recovery, a SCSkiller-inspired charcoal sidebar/card GUI, orange circular-thumb sliders and measured reductions in meter-path work. A single left click opens the app; `--background` starts only the tray icon. Automatic handoffs wait 500 ms, including Apple Music; fullscreen/manual timing is unchanged.
+
+[Run](PORTABLE_README.md) · [Build/test](systemwide/README.md) · [Architecture](SYSTEMWIDE.md) · [Measured validation](research/VALIDATION_0.10.3_2026-11-02.md) · [Changed files](research/CHANGED_FILES_0.10.3.txt) · [Roadmap](DEVELOPMENT_ROADMAP.md)
+
+Observed PCM is the application stream submitted to Windows, not proof of its original media rate. Apple Music catalog values remain estimates with known unresolved mismatches; that work is parked. Shared-format changes may interrupt players. Browser extensions, profiles, Rust and PEQ are excluded. No Windows DLL or TOPPING driver is modified.
+
+This app is `WindowsSourceSwitcher.Tray.exe`. The retained upstream app, `WindowsLosslessSwitcher.exe`, has separate behavior and packages. Its original documentation follows; its Apple playback promises and installer links do not describe this fork's tray host.
+
+---
 
 [![CI](https://github.com/jordanmgibson/WindowsLosslessSwitcher/actions/workflows/ci.yml/badge.svg)](https://github.com/jordanmgibson/WindowsLosslessSwitcher/actions/workflows/ci.yml)
 

@@ -32,22 +32,20 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
     private readonly Dictionary<string, string> _lastProbeDiagnostics = new(StringComparer.Ordinal);
     private readonly Dictionary<string, EndpointFormatKind> _lastSuccessfulKinds = new(StringComparer.Ordinal);
 
+    private string? _lastDeviceEnumerationError;
+    public string? LastDeviceEnumerationError => Volatile.Read(ref _lastDeviceEnumerationError);
+
     public IReadOnlyList<AudioDeviceInfo> GetRenderDevices()
     {
         try
         {
-            using var enumerator = new MMDeviceEnumerator();
-            using var defaultDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-
-            return enumerator
-                .EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active)
-                .Select(device => new AudioDeviceInfo(device.ID, device.FriendlyName, device.ID == defaultDevice.ID))
-                .OrderByDescending(device => device.IsDefault)
-                .ThenBy(device => device.FriendlyName, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            var devices = OwnedEndpointAccess.GetRenderDevices(out var error);
+            Volatile.Write(ref _lastDeviceEnumerationError, error);
+            return devices;
         }
-        catch
+        catch (Exception error)
         {
+            Volatile.Write(ref _lastDeviceEnumerationError, "Audio output enumeration failed: " + error.Message);
             return [];
         }
     }
@@ -56,9 +54,7 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
     {
         try
         {
-            using var enumerator = new MMDeviceEnumerator();
-            using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            return new AudioDeviceInfo(device.ID, device.FriendlyName, true);
+            return OwnedEndpointAccess.GetDefaultRenderDevice();
         }
         catch
         {
@@ -82,9 +78,9 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
     {
         try
         {
-            using var device = GetDevice(deviceId);
-            var mixFormat = device.AudioClient.MixFormat;
-            return new AudioFormatCandidate(mixFormat.SampleRate, EndpointFormatSupport.GetValidBitsPerSample(mixFormat), mixFormat.Channels);
+            var mixFormat = OwnedEndpointAccess.GetMixFormat(deviceId);
+            return mixFormat is null ? null : new AudioFormatCandidate(
+                mixFormat.SampleRate, EndpointFormatSupport.GetValidBitsPerSample(mixFormat), mixFormat.Channels);
         }
         catch
         {
@@ -358,7 +354,7 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
 
     private static MMDevice GetDevice(string deviceId)
     {
-        var enumerator = new MMDeviceEnumerator();
+        using var enumerator = new MMDeviceEnumerator();
         return enumerator.GetDevice(deviceId);
     }
 
@@ -419,8 +415,9 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
     private IReadOnlyList<EndpointFormatDescriptor> ProbeSupportedFormats(string deviceId)
     {
         using var device = GetDevice(deviceId);
-        var currentDeviceFormat = EndpointFormatSupport.TryReadPropertyStoreDeviceFormat(device);
-        var channels = currentDeviceFormat?.Format.Channels ?? device.AudioClient.MixFormat.Channels;
+        using var client = device.AudioClient;
+        var currentDeviceFormat = TryReadCurrentPropertyStoreDescriptor(deviceId);
+        var channels = currentDeviceFormat?.Format.Channels ?? client.MixFormat.Channels;
 
         var probeCount = 0;
         var acceptedCount = 0;
@@ -434,7 +431,7 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
             probeCount++;
             try
             {
-                var supported = device.AudioClient.IsFormatSupported(AudioClientShareMode.Exclusive, waveFormat);
+                var supported = client.IsFormatSupported(AudioClientShareMode.Exclusive, waveFormat);
                 if (supported)
                 {
                     acceptedCount++;
@@ -510,8 +507,7 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
 
         try
         {
-            using var device = GetDevice(deviceId);
-            propertyStoreFormat = EndpointFormatSupport.TryReadPropertyStoreDeviceFormat(device)?.Format;
+            propertyStoreFormat = TryReadCurrentPropertyStoreDescriptor(deviceId)?.Format;
         }
         catch
         {
@@ -547,8 +543,8 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
     {
         try
         {
-            using var device = GetDevice(deviceId);
-            return EndpointFormatSupport.TryReadPropertyStoreDeviceFormat(device);
+            var blob = OwnedEndpointAccess.ReadDeviceFormatBlob(deviceId);
+            return blob is null ? null : EndpointFormatSupport.TryParseDeviceFormat(blob);
         }
         catch
         {

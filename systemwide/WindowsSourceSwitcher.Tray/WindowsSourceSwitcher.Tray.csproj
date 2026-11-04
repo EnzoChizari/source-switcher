@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>WindowsSourceSwitcher.Tray</RootNamespace>
+    <AssemblyName>WindowsSourceSwitcher.Tray</AssemblyName>
+    <Version>1.1.0</Version>
+    <ApplicationIcon>Assets/TrayMixerBlack.ico</ApplicationIcon>
+    <Product>Source Switcher</Product>
+    <Description>Experimental shared-mode master-source tray controller based on WindowsLosslessSwitcher.</Description>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets/TrayMixer*.ico" />
+    <Compile Include="../WindowsSourceSwitcher.BrowserHost/WindowsBrowserPeerIdentity.cs" Link="Audio/WindowsBrowserPeerIdentity.cs" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.8" />
+    <ProjectReference Include="../WindowsSourceSwitcher.Core/WindowsSourceSwitcher.Core.csproj" />
+    <ProjectReference Include="../WindowsSourceSwitcher.WindowsShared/WindowsSourceSwitcher.WindowsShared.csproj" />
+    <None Include="../../LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../notices/TraceEvent-LICENSE.txt" Link="notices/TraceEvent-LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../FRIEND_START_HERE.txt" Condition="'$(FriendDistribution)' == 'true'" Link="START HERE.txt" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(FriendDistribution)' != 'true'">
+    <None Include="../../SYSTEMWIDE.md" Link="SYSTEMWIDE.md" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../PORTABLE_README.md" Link="START_HERE.md" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../IMPLEMENTATION_REPORT.md" Link="IMPLEMENTATION_REPORT.md" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../DEVELOPMENT_ROADMAP.md" Link="DEVELOPMENT_ROADMAP.md" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../tools/Measure-ProcessResources.ps1" Link="tools/Measure-ProcessResources.ps1" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../tools/Verify-RefreshRetention.ps1" Link="tools/Verify-RefreshRetention.ps1" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../research/**/*" Exclude="../../research/**/bin/**;../../research/**/obj/**" Link="research/%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../browser/**/*" Condition="'$(IncludeLegacyBrowserTools)' == 'true'" Exclude="../../browser/**/node_modules/**" Link="browser/%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../README.md" Link="systemwide/README.md" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
+

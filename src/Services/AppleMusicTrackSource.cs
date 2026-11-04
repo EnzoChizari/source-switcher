@@ -42,6 +42,7 @@ public sealed class AppleMusicTrackSource : ITrackSource, IMediaTransportControl
     private readonly DiagnosticsLogger _logger;
     private readonly TimeSpan _placeholderDebounce;
     private readonly TimeSpan _sessionLossDebounce;
+    private readonly bool _readArtwork;
     private readonly CancellationTokenSource _repollCts = new();
     private readonly object _sessionStateSync = new();
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
@@ -55,19 +56,21 @@ public sealed class AppleMusicTrackSource : ITrackSource, IMediaTransportControl
     private MediaArtworkSnapshot? _lastAppliedRealArtwork;
     private long _snapshotGeneration;
 
-    public AppleMusicTrackSource(DiagnosticsLogger logger)
-        : this(logger, PlaceholderDebounce, SessionLossDebounce)
+    public AppleMusicTrackSource(DiagnosticsLogger logger, bool readArtwork = true)
+        : this(logger, PlaceholderDebounce, SessionLossDebounce, readArtwork)
     {
     }
 
     internal AppleMusicTrackSource(
         DiagnosticsLogger logger,
         TimeSpan placeholderDebounce,
-        TimeSpan sessionLossDebounce)
+        TimeSpan sessionLossDebounce,
+        bool readArtwork = true)
     {
         _logger = logger;
         _placeholderDebounce = placeholderDebounce;
         _sessionLossDebounce = sessionLossDebounce;
+        _readArtwork = readArtwork;
     }
 
     public event EventHandler<TrackSnapshot>? TrackChanged;
@@ -165,6 +168,17 @@ public sealed class AppleMusicTrackSource : ITrackSource, IMediaTransportControl
         {
             return _sessionSnapshot;
         }
+    }
+
+    /// <summary>Read the currently attached media properties again without issuing any
+    /// playback command. Explicit retry can repair a missed media-properties notification.</summary>
+    public async Task<bool> RefreshMetadataAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await RefreshAttachedSessionAsync();
+        var session = _attachedSession;
+        if (session is null) return false;
+        return await RefreshSessionFromPropertiesAsync(session, "explicit-refresh", true, cancellationToken);
     }
 
     public MediaArtworkSnapshot GetArtworkSnapshot()
@@ -455,22 +469,30 @@ public sealed class AppleMusicTrackSource : ITrackSource, IMediaTransportControl
         UpdateSessionFromPlaybackInfo(sender);
     }
 
-    private async Task RefreshSessionFromPropertiesAsync(
+    private async Task<bool> RefreshSessionFromPropertiesAsync(
         GlobalSystemMediaTransportControlsSession session,
         string reason,
-        bool publishTrackSnapshot)
+        bool publishTrackSnapshot,
+        CancellationToken cancellationToken = default)
     {
         var callbackStopwatch = Stopwatch.StartNew();
         GlobalSystemMediaTransportControlsSessionMediaProperties properties;
         try
         {
-            properties = await session.TryGetMediaPropertiesAsync();
+            properties = await session.TryGetMediaPropertiesAsync().AsTask(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             _logger.Warn($"Failed to read Apple Music media properties ({reason}): {ex.Message}");
-            return;
+            return false;
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!ReferenceEquals(session, _attachedSession)) return false;
 
         var snapshot = BuildTrackSnapshot(session, properties, reason);
         snapshot = NormalizeSnapshot(snapshot);
@@ -483,7 +505,7 @@ public sealed class AppleMusicTrackSource : ITrackSource, IMediaTransportControl
         catch
         {
             UpdateSessionFromPlaybackInfo(session);
-            return;
+            return false;
         }
 
         var sessionSnapshot = BuildSessionSnapshot(session, snapshot, playbackInfo, MediaArtworkSnapshot.CreateUnavailable());
@@ -496,6 +518,7 @@ public sealed class AppleMusicTrackSource : ITrackSource, IMediaTransportControl
             callbackStopwatch.ElapsedMilliseconds,
             CancellationToken.None,
             cancellation => ReadArtworkFreshAsync(session, cancellation));
+        return true;
     }
 
     // GSMTC's thumbnail often lags a track change: the media-properties callback for the NEW
@@ -516,6 +539,9 @@ public sealed class AppleMusicTrackSource : ITrackSource, IMediaTransportControl
         CancellationToken cancellationToken,
         Func<CancellationToken, Task<MediaArtworkSnapshot>>? artworkRetryLoader = null)
     {
+        // Publish a coherent session before notifying track consumers. Otherwise a
+        // fast resolver sees the previous track and waits for a later census.
+        UpdateSessionState(sessionSnapshot, MediaArtworkSnapshot.CreateUnavailable());
         if (publishTrackSnapshot)
         {
             _logger.Info(
@@ -524,7 +550,9 @@ public sealed class AppleMusicTrackSource : ITrackSource, IMediaTransportControl
             HandleSnapshot(snapshot, isNormalized: true);
         }
 
-        UpdateSessionState(sessionSnapshot, MediaArtworkSnapshot.CreateUnavailable());
+        // The tray consumes track metadata only. Avoid thumbnail reads, image
+        // hashing and delayed artwork retries when no consumer displays artwork.
+        if (!_readArtwork) return;
 
         try
         {
@@ -923,10 +951,12 @@ public sealed class AppleMusicTrackSource : ITrackSource, IMediaTransportControl
                 return;
             }
 
-            _sessionSnapshot = sessionSnapshot with
+            // Artwork can finish after a pause or a newer playback-info callback.
+            // Update only artwork; do not resurrect the earlier playback state
+            // or refresh its observation timestamp with an image completion.
+            _sessionSnapshot = _sessionSnapshot with
             {
                 ArtworkRevision = artworkSnapshot.Revision,
-                ObservedAtUtc = DateTimeOffset.UtcNow,
             };
             _artworkSnapshot = artworkSnapshot;
             if (artworkSnapshot.HasArtwork)

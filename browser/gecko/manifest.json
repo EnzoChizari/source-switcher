@@ -1,0 +1,19 @@
+{
+  "manifest_version": 2,
+  "name": "DX5 Tab Decoder Rate",
+  "version": "0.1.0",
+  "description": "Opt-in Firefox/Zen decoder-rate evidence for a tab you explicitly follow with DX5 Source Switcher.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "dx5-native-rate-probe@local.invalid",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": ["nativeMessaging", "tabs", "activeTab"],
+  "background": { "scripts": ["protocol.js", "background.js"], "persistent": true },
+  "browser_action": {
+    "default_title": "DX5 tab decoder rate",
+    "default_popup": "popup.html"
+  },
+  "content_security_policy": "script-src 'self'; object-src 'none'"
+}

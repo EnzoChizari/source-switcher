@@ -1,0 +1,4 @@
+https://github.com/TsudaKageyu/minhook
+v1.3.4
+c3fcafdc10146beb5919319d0683e44e3c30d537
+Unmodified vendored include/src/LICENSE/CMake files; local parent CMake selects the x64 static sources.

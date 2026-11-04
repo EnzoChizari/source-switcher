@@ -1,0 +1,43 @@
+Source Switcher for Windows x64
+
+For 64-bit Intel and AMD Windows PCs. Tested on Windows 11 x64.
+
+1. Extract the entire ZIP to a folder. Open SourceSwitcher.exe
+   from that folder. The ZIP includes the .NET Desktop runtime and the app's
+   native libraries. Your DAC needs to appear as a Windows playback device.
+   If an older copy is running, exit it from the tray first.
+   With fresh settings, the first window shows hints beside the controls.
+   Left-click the hint or highlighted control to advance. Use Skip to end
+   the tour and Quick tour in the tray menu to reopen it.
+2. In Sources, check Output device. The first launch selects the current
+   Windows default. Pick your DAC or speakers if your audio uses another output.
+3. Start playing audio. Select its app in Sources to make it the rate master.
+   The Mixer page provides per-app volume, mute and signal meters.
+4. If automatic stream detection says it needs permission, exit from the tray
+   menu and use Run as administrator on the EXE. If you cannot elevate or the
+   app's stream remains unknown, select a supported manual rate under Sources.
+
+Automatic stream detection measures the PCM a player submits to Windows.
+Some players resample first. Apple Music's optional catalog rate is an estimate.
+With Apple Music selected as master, Diagnostics > Submitted PCM shows its
+Windows stream rate when observed. AMExclusive is a separate Apple Music mod.
+Changing the shared output rate can briefly interrupt playback. Exclusive mode
+and ASIO are outside the shared Windows mixer. The output device and driver
+determine which shared rates are available. This build is unsigned.
+
+One left click on the tray icon reopens the app. Closing the window hides it.
+Right-click the tray icon and choose Exit to stop the controller. Settings are
+saved per Windows user. To launch hidden, use --background in your shortcut.
+
+Updates: Source Switcher checks GitHub once at startup. Open Controls >
+Updates to check again or install an available update. The app restarts
+after installation. Use a dedicated folder containing the extracted app.
+
+The release feed is private. Sign in through Git Credential Manager on
+a PC that has Git for Windows, using an account granted repository access.
+Alternatively, add a Generic Credential in Windows Credential Manager.
+Use SourceSwitcher:GitHub:EnzoChizari/source-switcher as the address,
+your GitHub username, and a repository-scoped Contents read token as the
+password. Keep the credential in Credential Manager on your PC.
+
+The corresponding source archive includes the build steps and GPL license.

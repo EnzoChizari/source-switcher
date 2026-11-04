@@ -29,6 +29,7 @@ public sealed class AppleMusicCatalogResolver : IFormatResolver
     private readonly FormatCacheStore? _formatCacheStore;
     private readonly Func<HttpRequestMessage, CancellationToken, Task<string?>> _sendAsync;
     private readonly string _storefront;
+    private readonly bool _requireExactAlbumMatch;
     private readonly object _tokenSync = new();
     private string? _developerToken;
     private DateTimeOffset _developerTokenExpiresAtUtc;
@@ -36,16 +37,18 @@ public sealed class AppleMusicCatalogResolver : IFormatResolver
     public AppleMusicCatalogResolver(
         DiagnosticsLogger logger,
         FormatCacheStore? formatCacheStore = null,
-        string? configuredStorefront = null)
-        : this(logger, formatCacheStore, SendAsync, ResolveStorefront(configuredStorefront, logger))
+        string? configuredStorefront = null,
+        bool requireExactAlbumMatch = false)
+        : this(logger, formatCacheStore, SendAsync, ResolveStorefront(configuredStorefront, logger), requireExactAlbumMatch)
     {
     }
 
     internal AppleMusicCatalogResolver(
         DiagnosticsLogger logger,
         Func<HttpRequestMessage, CancellationToken, Task<string?>> sendAsync,
-        string storefront)
-        : this(logger, null, sendAsync, storefront)
+        string storefront,
+        bool requireExactAlbumMatch = false)
+        : this(logger, null, sendAsync, storefront, requireExactAlbumMatch)
     {
     }
 
@@ -53,13 +56,15 @@ public sealed class AppleMusicCatalogResolver : IFormatResolver
         DiagnosticsLogger logger,
         FormatCacheStore? formatCacheStore,
         Func<HttpRequestMessage, CancellationToken, Task<string?>> sendAsync,
-        string storefront)
+        string storefront,
+        bool requireExactAlbumMatch = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(storefront);
         _logger = logger;
         _formatCacheStore = formatCacheStore;
         _sendAsync = sendAsync;
         _storefront = storefront.Trim().ToLowerInvariant();
+        _requireExactAlbumMatch = requireExactAlbumMatch;
     }
 
     /// <summary>
@@ -369,7 +374,13 @@ public sealed class AppleMusicCatalogResolver : IFormatResolver
                     continue;
                 }
 
-                rawCandidates.Add((match.Value, ScoreMatch(track, match.Value.Title, match.Value.Artist, match.Value.Album)));
+                // Matching only title and artist can select a different master /
+                // edition with a different high-resolution rate. The tray adapter
+                // opts into an album identity gate; upstream behavior is retained
+                // unless this stricter metadata-only mode is explicitly requested.
+                var score = _requireExactAlbumMatch && !HasExactAlbumIdentity(track.Album, match.Value.Album)
+                    ? -1 : ScoreMatch(track, match.Value.Title, match.Value.Artist, match.Value.Album);
+                rawCandidates.Add((match.Value, score));
             }
 
             var topCandidates = rawCandidates
@@ -566,6 +577,18 @@ public sealed class AppleMusicCatalogResolver : IFormatResolver
         return match.Success && int.TryParse(match.Groups["value"].Value, out var value)
             ? value
             : null;
+    }
+
+    private static bool HasExactAlbumIdentity(string? expected, string? actual)
+    {
+        var normalizedActual = AppleMusicTrackMetadataNormalizer.NormalizeForComparison(actual);
+        if (string.IsNullOrEmpty(normalizedActual)) return false;
+        var normalizedExpected = AppleMusicTrackMetadataNormalizer.NormalizeForComparison(expected);
+        if (!string.IsNullOrEmpty(normalizedExpected) && normalizedExpected == normalizedActual) return true;
+        // Classical GSMTC metadata can contain "performers — album". Retain the
+        // full edition name in the album part; do not strip remaster/deluxe tags.
+        return AppleMusicTrackMetadataNormalizer.TrySplitOnDashSeparator(expected, out _, out var albumPart)
+            && AppleMusicTrackMetadataNormalizer.NormalizeForComparison(albumPart) == normalizedActual;
     }
 
     private static int ScoreMatch(TrackSnapshot track, string title, string artist, string album)

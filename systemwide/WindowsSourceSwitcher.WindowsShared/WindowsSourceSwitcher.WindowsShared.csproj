@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>WindowsLosslessSwitcher</RootNamespace>
+    <AssemblyName>WindowsSourceSwitcher.WindowsShared</AssemblyName>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Only WASAPI and its Core dependency are needed; the NAudio umbrella also
+         brings ASIO, MIDI, WinMM, and its separate WinForms helper assembly. -->
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Link the upstream implementation instead of copying or changing it. This
+         library excludes the original WPF UI, updater, TagLib, and recovery host. -->
+    <Compile Include="../../src/Abstractions/IAudioEndpointController.cs" Link="Upstream/Abstractions/IAudioEndpointController.cs" />
+    <Compile Include="../../src/Abstractions/IFormatResolver.cs" Link="Upstream/Abstractions/IFormatResolver.cs" />
+    <Compile Include="../../src/Abstractions/ITrackSource.cs" Link="Upstream/Abstractions/ITrackSource.cs" />
+    <Compile Include="../../src/Abstractions/IMediaTransportController.cs" Link="Upstream/Abstractions/IMediaTransportController.cs" />
+    <Compile Include="../../src/Models/AudioDeviceInfo.cs" Link="Upstream/Models/AudioDeviceInfo.cs" />
+    <Compile Include="../../src/Models/AudioFormatCandidate.cs" Link="Upstream/Models/AudioFormatCandidate.cs" />
+    <Compile Include="../../src/Models/FormatCacheEntry.cs" Link="Upstream/Models/FormatCacheEntry.cs" />
+    <Compile Include="../../src/Models/MediaArtworkSnapshot.cs" Link="Upstream/Models/MediaArtworkSnapshot.cs" />
+    <Compile Include="../../src/Models/MediaSessionSnapshot.cs" Link="Upstream/Models/MediaSessionSnapshot.cs" />
+    <Compile Include="../../src/Models/MediaTransportRepeatMode.cs" Link="Upstream/Models/MediaTransportRepeatMode.cs" />
+    <Compile Include="../../src/Models/MediaTransportState.cs" Link="Upstream/Models/MediaTransportState.cs" />
+    <Compile Include="../../src/Models/ResolvedAudioFormat.cs" Link="Upstream/Models/ResolvedAudioFormat.cs" />
+    <Compile Include="../../src/Models/TrackSnapshot.cs" Link="Upstream/Models/TrackSnapshot.cs" />
+    <Compile Include="../../src/Services/AppDataPaths.cs" Link="Upstream/Services/AppDataPaths.cs" />
+    <Compile Include="../../src/Services/AppleMusicCatalogResolver.cs" Link="Upstream/Services/AppleMusicCatalogResolver.cs" />
+    <Compile Include="../../src/Services/AppleMusicTrackMetadataNormalizer.cs" Link="Upstream/Services/AppleMusicTrackMetadataNormalizer.cs" />
+    <Compile Include="../../src/Services/AppleMusicTrackSource.cs" Link="Upstream/Services/AppleMusicTrackSource.cs" />
+    <Compile Include="../../src/Services/CoreAudioEndpointController.cs" Link="Upstream/Services/CoreAudioEndpointController.cs" />
+    <Compile Include="../../src/Services/DiagnosticsLogger.cs" Link="Upstream/Services/DiagnosticsLogger.cs" />
+    <Compile Include="../../src/Services/EndpointFormatSupport.cs" Link="Upstream/Services/EndpointFormatSupport.cs" />
+    <Compile Include="../../src/Services/FormatCacheKey.cs" Link="Upstream/Services/FormatCacheKey.cs" />
+    <Compile Include="../../src/Services/FormatCacheStore.cs" Link="Upstream/Services/FormatCacheStore.cs" />
+    <Compile Include="../../src/Services/OwnedEndpointAccess.cs" Link="Upstream/Services/OwnedEndpointAccess.cs" />
+    <Compile Include="../../src/Services/PolicyConfigInterop.cs" Link="Upstream/Services/PolicyConfigInterop.cs" />
+  </ItemGroup>
+</Project>

@@ -210,6 +210,40 @@ public sealed class AppleMusicCatalogResolverTests
         Assert.Equal("Midnight Rain", match!.Value.Title);
     }
 
+    [Theory]
+    [InlineData("Album (2025 Remaster)", "Album", false)]
+    [InlineData("Album", "Album (Deluxe Edition)", false)]
+    [InlineData("", "Album", false)]
+    [InlineData("Album", "", false)]
+    [InlineData("Album (2025 Remaster)", "Album [2025 Remaster]", true)]
+    [InlineData("Orchestra — Album (2025 Remaster)", "Album (2025 Remaster)", true)]
+    public async Task StrictAlbumModeRejectsOtherOrUnknownEditions(string expectedAlbum, string candidateAlbum, bool matches)
+    {
+        var response = BuildSearchResponse("Song", "Artist", candidateAlbum);
+        var resolver = new AppleMusicCatalogResolver(CreateLogger(), (_, _) => Task.FromResult<string?>(response),
+            "us", requireExactAlbumMatch: true);
+
+        var match = await resolver.SearchBestMatchAsync(CreateTrack("Song", "Artist", expectedAlbum), "fake-token", CancellationToken.None);
+
+        Assert.Equal(matches, match is not null);
+    }
+
+    [Fact]
+    public async Task StrictAlbumModeContinuesSearchingPastAnEarlierWrongEdition()
+    {
+        var searches = 0;
+        var resolver = new AppleMusicCatalogResolver(CreateLogger(), (_, _) => Task.FromResult<string?>(
+            ++searches == 1 ? BuildSearchResponse("Song", "Artist", "Old Edition")
+                : BuildSearchResponse("Song", "Artist", "Album (2025 Remaster)")), "us", requireExactAlbumMatch: true);
+
+        var match = await resolver.SearchBestMatchAsync(CreateTrack("Song", "Artist", "Album (2025 Remaster)"),
+            "fake-token", CancellationToken.None);
+
+        Assert.NotNull(match);
+        Assert.Equal("Album (2025 Remaster)", match!.Value.Album);
+        Assert.True(searches > 1);
+    }
+
     [Fact]
     public async Task SearchBestMatchAsync_RejectsExactTitleWithOnlyArtistOverlap()
     {

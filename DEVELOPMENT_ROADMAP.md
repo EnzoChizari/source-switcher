@@ -1,0 +1,20 @@
+Current patch **0.10.3**: short-window navigation stays reachable with adaptive spacing, a hidden footer when constrained, and keyboard/focus scrolling. Reliability checks cover actual native session creation/closure and already-playing subscription; resource observations retain their measured limits.
+
+# DX5 Source Switcher — current roadmap, 0.10.3
+
+The owner requested Windows features/testing, then a minimal charcoal GUI inspired by SCSkiller, then measured resource optimization. Application and multi-DAC profiles, browser extensions/web integration, Rust, device PEQ and a replacement audio engine are excluded. Apple Music track-rate estimation is parked after unresolved mismatches.
+
+| Stage | Implemented | Verification and remaining limits |
+| --- | --- | --- |
+| 01 Core controller | Active Windows sessions, persistent master, endpoint format switching, pause/restart rate holding, manual per-app overrides, ShareX exclusion, Refresh retention | Deterministic policy/interop tests and actual shared-mode 48/96/192 kHz PCM playback. Windows stream rate does not establish original media rate. |
+| 02 Advanced mixer | Per-app volume/mute, live signal peaks, favorites, pins, global hotkeys, single-left-click tray opening, optional fullscreen priority | Native session readback, owned playback fixtures, restart/lifecycle and accessibility checks. Protected or unverifiable sessions remain read-only. Profiles are omitted. |
+| 03 Format intelligence | Observed PCM versus estimate/manual/unknown labels, read-only diagnostics, source/mix/device formats, bounded history | Unknown evidence holds. No general verified original-media detector exists. Apple catalog matches remain unverified and can be wrong. Browser tabs share an app identity; the withdrawn extension path is not a current feature. |
+| 04 Reliability/device management | Pinned endpoint recovery, device/session notifications, capability checks, rate-write throttling, epoch guards, interruption history, power suspend/resume recovery | Automated failure/reconnect/race tests, trace-failure recovery and owned-window power-message tests. Physical USB unplug/replug and actual PC sleep/resume still require separate acceptance. Multi-DAC profiles are omitted. |
+| GUI | Left navigation, charcoal cards, amber selection, orange thin-track circular-thumb sliders, keyboard navigation and native accessibility | Example renders, constrained/expanded layout checks and native control tests. Every physical display/DPI/high-contrast combination is not certified. |
+| Lightweightness | Meter work stops while hidden; cached verified native leases; coalesced notifications; fewer frame allocations; direct meter bindings; background startup | Resource captures and their exact durations/conditions are in the current validation report. No forced GC or working-set trimming. A bounded sample cannot prove an unlimited memory ceiling or leak freedom. |
+
+Automatic priority is fullscreen (when enabled) → favorites → pins → regular applications. All ordinary automatic destinations, including Apple Music, wait 500 ms. Fullscreen takeover and manual selection retain their own timing. Unknown playback holds conservatively, and Release stops automatic following. Generic stream activity is weaker evidence than a media session's playing/paused status.
+
+Apple Music main/helper processes form one logical source. The existing estimate/manual controls and live-stream switch guard remain. This release does not fix the known 48 versus 88.2/96 kHz track estimate mismatch or guarantee player recovery after changing the Windows shared format. No exclusive-mode or player transport integration is added.
+
+Use the [run instructions](PORTABLE_README.md), [build steps](systemwide/README.md), [measured validation](research/VALIDATION_0.10.3_2026-11-02.md) and [changed-file manifest](research/CHANGED_FILES_0.10.3.txt). Historical research reports retain their dated scope. Hardware listening, USB hotplug, real sleep/resume, future sign-in and user workability acceptance remain distinct from software validation.

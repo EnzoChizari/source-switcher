@@ -8,10 +8,10 @@ public static class PolicyConfigInterop
     public static WaveFormat? GetDeviceFormat(string deviceId)
     {
         var policyConfig = CreatePolicyConfig();
-        Marshal.ThrowExceptionForHR(policyConfig.GetDeviceFormat(deviceId, defaultFormat: false, out var pointer));
-
+        var pointer = IntPtr.Zero;
         try
         {
+            Marshal.ThrowExceptionForHR(policyConfig.GetDeviceFormat(deviceId, defaultFormat: false, out pointer));
             return pointer == IntPtr.Zero ? null : WaveFormat.MarshalFromPtr(pointer);
         }
         finally
@@ -20,6 +20,7 @@ public static class PolicyConfigInterop
             {
                 Marshal.FreeCoTaskMem(pointer);
             }
+            Marshal.ReleaseComObject(policyConfig);
         }
     }
 
@@ -30,7 +31,14 @@ public static class PolicyConfigInterop
         try
         {
             var policyConfig = CreatePolicyConfig();
-            Marshal.ThrowExceptionForHR(policyConfig.SetDeviceFormat(deviceId, pointer, pointer));
+            try
+            {
+                Marshal.ThrowExceptionForHR(policyConfig.SetDeviceFormat(deviceId, pointer, pointer));
+            }
+            finally
+            {
+                Marshal.ReleaseComObject(policyConfig);
+            }
         }
         finally
         {
@@ -52,17 +60,31 @@ public static class PolicyConfigInterop
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IPolicyConfig
     {
+        // Native methods return HRESULT. PreserveSig keeps that ABI so callers can check it
+        // explicitly, without introducing an implicit managed retval parameter.
+        [PreserveSig]
         int GetMixFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId, out IntPtr mixFormat);
+        [PreserveSig]
         int GetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId, [MarshalAs(UnmanagedType.Bool)] bool defaultFormat, out IntPtr format);
+        [PreserveSig]
         int ResetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId);
+        [PreserveSig]
         int SetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr endpointFormat, IntPtr mixFormat);
+        [PreserveSig]
         int GetProcessingPeriod([MarshalAs(UnmanagedType.LPWStr)] string deviceId, [MarshalAs(UnmanagedType.Bool)] bool defaultFormat, IntPtr defaultPeriod, IntPtr minimumPeriod);
+        [PreserveSig]
         int SetProcessingPeriod([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr period);
+        [PreserveSig]
         int GetShareMode([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr mode);
+        [PreserveSig]
         int SetShareMode([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr mode);
+        [PreserveSig]
         int GetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr propertyKey, IntPtr value);
+        [PreserveSig]
         int SetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr propertyKey, IntPtr value);
+        [PreserveSig]
         int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string deviceId, int role);
+        [PreserveSig]
         int SetEndpointVisibility([MarshalAs(UnmanagedType.LPWStr)] string deviceId, [MarshalAs(UnmanagedType.Bool)] bool isVisible);
     }
 }

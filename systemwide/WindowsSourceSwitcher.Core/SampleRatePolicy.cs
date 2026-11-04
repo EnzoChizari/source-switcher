@@ -1,0 +1,142 @@
+namespace WindowsSourceSwitcher.Core;
+
+public enum RateProvenance
+{
+    Unknown,
+    WindowsMixFormat,
+    ApplicationReported,
+    CatalogMetadata,
+    VerifiedNative,
+    WasapiStream,
+    BrowserDecoder
+}
+
+/// <summary>
+/// VerifiedNative must mean independently verified source/content rate. An endpoint mix format,
+/// capture format, media-session playback status, or guessed application default never qualifies.
+/// </summary>
+public sealed record RateObservation(
+    string SourceKey,
+    string SessionToken,
+    long SelectionRevision,
+    int? SampleRateHz,
+    RateProvenance Provenance,
+    string Detail);
+
+public enum RateDecisionReason
+{
+    SwitchingDisabled,
+    NoMasterSelected,
+    ManualOverride,
+    VerifiedNative,
+    CatalogMetadata,
+    SourcePaused,
+    SourceUnavailable,
+    NativeRateUnknown,
+    ConflictingObservations,
+    WasapiStream,
+    BrowserDecoder,
+    BrowserHold
+}
+
+public sealed record RateDecision(int? DesiredSampleRateHz, RateDecisionReason Reason, string Detail);
+
+/// <summary>Pure selection policy: endpoint calls and remembering successful changes belong to the host.</summary>
+public static class SampleRatePolicy
+{
+    public static RateDecision Evaluate(
+        SourceSettings settings,
+        IReadOnlyList<SourceSnapshot> sources,
+        IEnumerable<RateObservation>? observations = null)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(sources);
+        settings.Validate();
+        if (!settings.SwitchingEnabled)
+            return new(null, RateDecisionReason.SwitchingDisabled, "Sample-rate switching is paused.");
+        if (settings.SelectedSourceKey is not { } selected)
+            return new(null, RateDecisionReason.NoMasterSelected, "Select an application to control the endpoint sample rate.");
+
+        // Explicit user input applies even if the selected app is paused or has not restarted yet.
+        var manual = settings.ManualSampleRatesHz.FirstOrDefault(item => KeysEqual(item.Key, selected));
+        if (manual.Key is not null)
+            return new(manual.Value, RateDecisionReason.ManualOverride, "Using the selected application's manual sample-rate override.");
+
+        var held = KeysEqual(settings.LastKnownSourceKey, selected) ? settings.LastKnownSampleRateHz : null;
+        var current = sources.Where(source => KeysEqual(source.Key, selected)).ToArray();
+        if (current.Length == 0)
+            return new(held, RateDecisionReason.SourceUnavailable, "Selected application is unavailable; retaining its last confirmed rate.");
+        if (current.Length != 1)
+            return new(held, RateDecisionReason.NativeRateUnknown, "Ambiguous source sessions; retaining the selected application's last confirmed rate.");
+
+        var source = current[0];
+        if (!source.IsActive)
+            return new(held, RateDecisionReason.SourcePaused, "Selected application is paused or idle; retaining its last confirmed rate.");
+
+        var eligibleObservations = (observations ?? [])
+            .Where(observation => KeysEqual(observation.SourceKey, selected)
+                && StringComparer.Ordinal.Equals(observation.SessionToken, source.SessionToken)
+                && !string.IsNullOrWhiteSpace(source.SessionToken)
+                && observation.SelectionRevision == settings.SelectionRevision
+                && observation.SampleRateHz is { } rate && SampleRates.IsValid(rate))
+            .ToArray();
+        var verifiedRates = eligibleObservations
+            .Where(observation => observation.Provenance == RateProvenance.VerifiedNative)
+            .Select(observation => observation.SampleRateHz!.Value)
+            .Distinct()
+            .ToArray();
+
+        if (verifiedRates.Length > 0)
+            return verifiedRates.Length == 1
+                ? new(verifiedRates[0], RateDecisionReason.VerifiedNative, "Using a verified native rate from the selected application's current sessions.")
+                : new(held, RateDecisionReason.ConflictingObservations, "Selected application reports conflicting native rates; use a manual override.");
+
+        var browserRates = settings.BrowserRateDetectionEnabled
+            ? eligibleObservations.Where(observation => observation.Provenance == RateProvenance.BrowserDecoder)
+                .Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray()
+            : [];
+        if (browserRates.Length > 0)
+            return browserRates.Length == 1
+                ? new(browserRates[0], RateDecisionReason.BrowserDecoder, "Following the linked tab's media rate; the browser may resample its output.")
+                : new(held, RateDecisionReason.ConflictingObservations, "Pinned browser tab reports conflicting decoder rates; holding output.");
+
+        // Apple Music may keep a fixed Windows PCM rate across hi-res tracks.
+        // The explicit catalog option follows track metadata instead, with honest
+        // estimate provenance. Missing/stale metadata holds rather than following
+        // the endpoint-dependent PCM stream back to the old mixer rate.
+        if (settings.CatalogRateDetectionEnabled && AppleMusicIdentity.IsOfficialExecutable(source.ExecutablePath))
+        {
+            var appleRates = eligibleObservations.Where(observation => observation.Provenance == RateProvenance.CatalogMetadata)
+                .Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray();
+            return appleRates.Length switch
+            {
+                1 => new(appleRates[0], RateDecisionReason.CatalogMetadata, "Following the opted-in Apple Music catalog estimate for this track; the actual delivered asset is unverified."),
+                > 1 => new(held, RateDecisionReason.ConflictingObservations, "Apple Music track metadata is conflicting; retaining the confirmed rate."),
+                _ => new(held, RateDecisionReason.NativeRateUnknown, "Apple Music track estimate is pending or unavailable; holding output. Its Windows PCM stream can remain fixed across tracks.")
+            };
+        }
+
+        var streamRates = settings.StreamRateDetectionEnabled
+            ? eligibleObservations.Where(observation => observation.Provenance == RateProvenance.WasapiStream)
+                .Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray()
+            : [];
+        if (streamRates.Length > 0)
+            return streamRates.Length == 1
+                ? new(streamRates[0], RateDecisionReason.WasapiStream, "Following the selected app's observed WASAPI PCM stream rate; the app may have resampled its original media.")
+                : new(held, RateDecisionReason.ConflictingObservations, "Selected app has different simultaneous stream rates; retaining its last confirmed rate.");
+
+        var catalogRates = settings.CatalogRateDetectionEnabled
+            ? eligibleObservations.Where(observation => observation.Provenance == RateProvenance.CatalogMetadata)
+                .Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray()
+            : [];
+
+        return catalogRates.Length switch
+        {
+            1 => new(catalogRates[0], RateDecisionReason.CatalogMetadata, "Using an opted-in catalog rate estimate; this does not verify the application's actual stream rate."),
+            > 1 => new(held, RateDecisionReason.ConflictingObservations, "Selected application has conflicting catalog rate estimates; use a manual override."),
+            _ => new(held, RateDecisionReason.NativeRateUnknown, "Native rate is not observable; retaining the last confirmed rate. Set a manual override to choose a rate.")
+        };
+    }
+
+    private static bool KeysEqual(string? left, string? right) => StringComparer.OrdinalIgnoreCase.Equals(left, right);
+}
