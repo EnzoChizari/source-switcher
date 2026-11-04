@@ -1,32 +1,69 @@
 # Source Switcher
 
-**A Windows tray app that lets you choose which app drives your audio output format.**
+**Choose which Windows app drives the sample rate of your DAC or playback device.**
 
-Pick a DAC or another Windows playback device, then choose a source app manually or let Source Switcher follow your priorities. It can adjust the selected device's shared-mode sample rate based on what the active app sends to Windows.
+Source Switcher lives in the Windows notification area. Choose a playback device and a source app, then follow the app's observed sample rate or set a rate yourself. If you regularly move between a music player, a video player, and other desktop apps, you can set priorities so the source changes with your listening.
 
-## What you can do
+[Download](https://github.com/EnzoChizari/source-switcher/releases) · [Quick start](#quick-start) · [How switching works](#how-switching-works) · [Troubleshooting](#troubleshooting) · [Changelog](SOURCE_SWITCHER_CHANGELOG.md)
 
-- **Choose a source.** Set a music player or another app as the master source, or use favorites and pins to prioritize apps as playback moves between them.
-- **Set the output format.** Follow the source's sample rate automatically or save a manual rate for an app. Automatic bit-depth selection is experimental, and you can set a manual depth override.
-- **Mix apps in one place.** View active audio sessions and adjust volume or mute for supported sessions on the selected output.
-- **See what's happening.** Use Diagnostics to check the observed stream format and see when Source Switcher holds the current output format.
+## Quick start
 
-## Get started
+Use the self-contained release ZIP on a Windows x64 PC. The ZIP includes the .NET desktop runtime.
 
-1. Download the Windows x64 ZIP from [Releases](https://github.com/EnzoChizari/source-switcher/releases).
-2. Extract the entire ZIP and run `WindowsSourceSwitcher.Tray.exe`.
-3. Open **Sources** from the tray icon, select your playback device, and double-click an app to make it the master source.
-4. Leave the rate on **Auto** or choose a supported manual rate. If automatic detection is unavailable, try running the app as administrator so it can access Windows audio tracing.
+1. Download the Windows x64 ZIP from [GitHub Releases](https://github.com/EnzoChizari/source-switcher/releases) and extract the entire archive to a folder.
+2. Run `WindowsSourceSwitcher.Tray.exe` and click its icon in the Windows notification area. Check the hidden-icons menu if you don't see it.
+3. In **Sources**, choose the DAC or playback device you want Source Switcher to control.
+4. Start playback in a source app, then double-click its row in **Sources** to make it the master. The master is the app whose format drives the selected output.
+5. Leave the rate on **Auto** to follow the observed sample rate, or choose one of the rates supported by the selected output. Open **Diagnostics** to see the observed format and the controller's status.
 
-Windows apps can resample audio before submitting it, so the observed format may differ from the original track. Changing the shared output format can briefly interrupt playback.
+## Choose a switching mode
 
-See the [changelog](SOURCE_SWITCHER_CHANGELOG.md) for recent updates.
+| What you want to do | Where to start |
+| --- | --- |
+| Let one player control the output | Double-click the player in **Sources** and set the rate to **Auto**. |
+| Use a fixed rate for one app | Make the app master and pick a supported rate from the rate menu. |
+| Let the master follow playback | Mark preferred apps as favorites or pins, then enable **Auto-switch by source priority**. |
+| Give a fullscreen app priority | Enable fullscreen priority separately. |
+| Keep the output at a specific bit depth for one app | Enable **Follow source bit depth (experimental)** in **Settings**, then set a manual depth for that master in **Sources**. |
+| Change an app's volume without switching sources | Open **Mixer** and use the controls for that app's session. |
 
-## Credits
+## How switching works
 
-We built Source Switcher around our own Windows tray workflow. Windows Lossless Switcher helped inspire the idea, and Source Switcher also uses selected components from that project. See the [third-party notices](THIRD_PARTY_NOTICES.md) for attribution details.
+**Source priority.** With automatic switching enabled, the order is eligible fullscreen audio when enabled, playing favorites, playing pins, then regular apps. A playing app generally keeps control against peers at the same priority. Ordinary automatic handoffs require a source to remain eligible for half a second. Use **Release** to stop automatic following.
 
-## License
+**Format detection.** Source Switcher observes PCM streams submitted to Windows and uses supported formats for the selected shared-mode playback device. If the observation is missing, stale, ambiguous, or unsupported, it can hold the last confirmed format. Automatic rate detection uses Windows audio tracing and may require administrator elevation or appropriate tracing permissions.
+
+**Sample rate and bit depth are separate.** An app that submits floating-point PCM can still provide a usable sample rate. Experimental automatic bit depth may hold the current setting when the evidence is insufficient. A saved manual override gives you control when you know which depth you want.
+
+**Mixer.** View session activity and adjust volume or mute for supported sessions on the selected output. Some sessions are read-only when the app cannot safely identify or control them. The meters show Windows signal activity.
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| Auto keeps the same rate | Confirm the intended app is master and playing. Check **Diagnostics** for stream evidence and try the refresh control. If audio tracing is unavailable, relaunch with the required permissions. |
+| A manual rate is missing | The menu lists rates supported by the selected output at its current depth and channel count. Check that the intended device is selected. |
+| The reported format differs from the file | A player can resample or convert audio before submitting it to Windows. Apple Music catalog data, when enabled, is an estimate. |
+| Playback briefly goes silent on a switch | Changing the shared format can interrupt an active stream. Recovery depends on the player and device. A fixed manual rate can reduce format changes for that app. |
+| The selected DAC is unavailable | Reconnect the device and check its status in **Diagnostics**. Source Switcher retains the selected output while it is absent. |
+
+### Does this guarantee bit-perfect playback?
+
+Source Switcher controls the Windows shared-mode output format. The format shown in Diagnostics describes the stream submitted to Windows, which can differ from the media file. Exclusive mode, ASIO, and native DSD are outside this workflow.
+
+## Build and contribute
+
+Install the .NET 8 SDK on Windows and run the tray project from the repository root.
+
+```powershell
+dotnet run --project .\systemwide\WindowsSourceSwitcher.Tray
+```
+
+The [contribution guide](CONTRIBUTING.md) covers the test commands and what to include in bug reports. Check the [security policy](SECURITY.md) for private vulnerability reporting and the [changelog](SOURCE_SWITCHER_CHANGELOG.md) for release history.
+
+## Credits and license
+
+We built Source Switcher around our own Windows tray workflow. Windows Lossless Switcher inspired the idea and provided selected components used in this project. See the [third-party notices](THIRD_PARTY_NOTICES.md) for attribution details.
 
 Source Switcher is distributed under the [GNU General Public License v3.0 or later](LICENSE).
 
