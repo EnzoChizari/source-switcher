@@ -49,7 +49,7 @@ internal static class SourceRatePresentation
         if (settings.FollowSourceBitDepth && observation?.Provenance == RateProvenance.PlayerMetadata
             && IsCurrentObservation(source, settings, observation))
             return new(FormatRate(observation.SampleRateHz!.Value) + " track",
-                observation.BitsPerSample is { } trackBits ? $"Fooyin reports a {trackBits}-bit track." : "Fooyin reports the track rate. Depth is unknown.",
+                observation.Detail + (observation.BitsPerSample is { } trackBits ? $" Reported depth: {trackBits}-bit." : " Depth is unknown."),
                 observation.Detail);
 
         if (settings.BrowserRateDetectionEnabled && observation?.Provenance == RateProvenance.BrowserDecoder
@@ -73,7 +73,9 @@ internal static class SourceRatePresentation
             : IsCurrentStream(source, settings, observation) ? observation : null;
         if (stream is not null)
             return new(FormatRate(stream.SampleRateHz!.Value) + " stream",
-                "Actual PCM rate submitted to WASAPI; original media rate remains unverified.", stream.Detail);
+                settings.FollowSourceBitDepth && string.Equals(Path.GetFileName(source.ExecutablePath), "spotify.exe", StringComparison.OrdinalIgnoreCase)
+                    ? "Open Spotify's Lossless badge → File quality to follow its reported depth. The Windows stream only supplies the rate."
+                    : "Actual PCM rate submitted to WASAPI; original media rate remains unverified.", stream.Detail);
 
         if (IsCurrentCatalogEstimate(source, settings, observation))
             return new(FormatRate(observation!.SampleRateHz!.Value) + " est.",

@@ -1,5 +1,9 @@
 # Source Switcher changelog
 
+## v1.4.1
+
+- Spotify Auto reads 16- or 24-bit lossless from the desktop player's open File quality card. Without that card, Auto keeps the current depth while following the observed Windows rate.
+
 ## v1.4.0
 
 - Apple Music Auto can raise the output bit depth from a catalog estimate and keeps that depth across lower-depth tracks to avoid repeat interruptions. Manual depth overrides remain available.

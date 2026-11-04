@@ -32,8 +32,9 @@ a sample rate while Auto retains the current depth. Apple Music catalog
 estimates can raise the depth, which stays higher across subsequent tracks.
 When depth is unknown or the checkbox is off, the app keeps the current depth.
 Use Master bit depth in Sources to save a depth for the current master.
-Spotify Auto retains the output depth because its Windows stream can
-have a different bit depth from the original track. VLC, Fooyin and
+Spotify Auto can follow 16- or 24-bit lossless while its English File quality
+card is open. Click the Lossless badge in Spotify to open it. Without the
+card, Auto keeps the current depth. VLC, Fooyin and
 browsers have the same safeguard for their Windows streams. Linked Helium
 tabs can supply depth from supported integer WAV and native FLAC headers.
 Settings > Output capabilities shows the highest detected rate at each depth

@@ -119,6 +119,27 @@ public sealed class SampleRatePolicyTests
         Assert.Equal(24, result.DesiredBitsPerSample);
     }
 
+    [Theory]
+    [InlineData(16)]
+    [InlineData(24)]
+    public void SpotifyFileQualityWinsOverFloatPcmOnlyForTheCurrentSession(int depth)
+    {
+        const string key = @"C:\Apps\Spotify.exe";
+        var settings = new SourceSettings { FollowSourceBitDepth = true };
+        settings.SelectMaster(key, "Spotify");
+        var track = Observation(settings, 44100) with
+        { SourceKey = key, Provenance = RateProvenance.PlayerMetadata, BitsPerSample = depth };
+        var stream = track with { Provenance = RateProvenance.WasapiStream, BitsPerSample = 32, UsesFloatPcm = true };
+        var decision = SampleRatePolicy.Evaluate(settings, [Source(key)], [stream, track]);
+        Assert.Equal(RateDecisionReason.PlayerMetadata, decision.Reason);
+        Assert.Equal(depth, decision.DesiredBitsPerSample);
+        var stale = SampleRatePolicy.Evaluate(settings, [Source(key)], [stream, track with { SessionToken = "old" }]);
+        Assert.Equal(RateDecisionReason.WasapiStream, stale.Reason);
+        Assert.Null(stale.DesiredBitsPerSample);
+        settings.ManualBitDepths[key] = 32;
+        Assert.Equal(32, SampleRatePolicy.Evaluate(settings, [Source(key)], [stream, track]).DesiredBitsPerSample);
+    }
+
     [Fact]
     public void NoSelectionDoesNotUseAnActiveApplication()
     {

@@ -116,7 +116,7 @@ internal sealed class ControlsSettingsView : UserControl
         _detectionLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _detectionLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         Note("Stream rates describe PCM sent to Windows. Apple Music catalog rates are estimates; original media remains unverified.");
-        Note("Auto depth is experimental. Apple Music catalog estimates can raise the output depth. Spotify and floating-point streams keep the current depth. Use Master bit depth to save an exact value.");
+        Note("Auto depth is experimental. Apple Music catalog estimates can raise depth. Spotify uses its open File quality card. Unknown depth keeps the current output. Use Master bit depth to save an exact value.");
         Section("Output capabilities");
         Add(_outputCapabilities);
         Note("Highest probed PCM rate at each depth for the selected output and channel count. Playback follows the source format within these limits.");

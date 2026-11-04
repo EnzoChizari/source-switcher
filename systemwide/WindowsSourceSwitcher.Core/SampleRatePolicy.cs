@@ -108,7 +108,7 @@ public static class SampleRatePolicy
             return new(held, RateDecisionReason.ConflictingObservations, "The player reports conflicting track rates; holding output.");
         if (playerRates.Length == 1)
             return WithDepth(new(playerRates[0], RateDecisionReason.PlayerMetadata,
-                "Following Fooyin's current track metadata."), settings.FollowSourceBitDepth ? AgreeOnBitDepth(playerFormats) : null);
+                playerFormats[0].Detail), settings.FollowSourceBitDepth ? AgreeOnBitDepth(playerFormats) : null);
 
         var browserFormats = settings.BrowserRateDetectionEnabled
             ? eligibleObservations.Where(observation => observation.Provenance == RateProvenance.BrowserDecoder)

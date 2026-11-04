@@ -50,7 +50,8 @@ internal sealed class TrayContext : ApplicationContext
     private RateDecision? _lastDecision;
     private BrowserRateBridge? _browserBridge;
     private RateObservation? _browserObservation;
-    private RateObservation? _fooyinObservation;
+    private RateObservation? _playerObservation;
+    private readonly SpotifyFileQualityReader _spotifyFileQuality = new();
     private Task _browserConfigurationTask = Task.CompletedTask;
     private int _browserNotificationPosted;
     private AudioDeviceWatcher? _deviceWatcher;
@@ -629,7 +630,7 @@ internal sealed class TrayContext : ApplicationContext
     {
         ProjectAppleCatalogObservation();
         _browserObservation = null;
-        _fooyinObservation = null;
+        _playerObservation = null;
         _evidence = "Native rate: unknown. Set a per-app override to choose a rate.";
     }
 
@@ -1013,14 +1014,18 @@ internal sealed class TrayContext : ApplicationContext
             var sources = snapshot.Sources.Where(s => s.CanPersist).Select(s => PlaybackPresentation.ForRatePolicy(s, _mediaPlayback)).ToArray();
             _browserObservation = BrowserSourcePolicy.Observe(_settings, sources, browser,
                 _browserBridge?.IsEvidenceCurrent(browser.Version) == true);
-            var fooyin = _settings.FollowSourceBitDepth ? sources.FirstOrDefault(source => source.IsActive
-                && StringComparer.OrdinalIgnoreCase.Equals(source.Key, selectedKey)
-                && StringComparer.OrdinalIgnoreCase.Equals(Path.GetFileName(source.ExecutablePath), "fooyin.exe")) : null;
-            var fooyinObservation = fooyin is null ? null
-                : await Task.Run(() => FooyinFormatReport.Read(_fooyinReportPath, fooyin, selectedRevision));
+            var player = _settings.FollowSourceBitDepth ? sources.FirstOrDefault(source => source.IsActive
+                && StringComparer.OrdinalIgnoreCase.Equals(source.Key, selectedKey)) : null;
+            var playerExecutable = Path.GetFileName(player?.ExecutablePath);
+            var fooyin = string.Equals(playerExecutable, "fooyin.exe", StringComparison.OrdinalIgnoreCase) ? player : null;
+            var spotify = string.Equals(playerExecutable, "spotify.exe", StringComparison.OrdinalIgnoreCase) ? player : null;
+            var spotifyQuality = spotify is null ? null : await _spotifyFileQuality.ReadAsync(spotify.Key);
+            var playerObservation = fooyin is not null
+                ? await Task.Run(() => FooyinFormatReport.Read(_fooyinReportPath, fooyin, selectedRevision))
+                : spotify is not null ? spotifyQuality?.Observe(spotify, selectedRevision) : null;
             if (_exiting || epoch != _epoch) return;
-            _fooyinObservation = fooyinObservation;
-            var observations = _streamObservations.Values.Concat(new[] { _observation, _browserObservation, fooyinObservation }.OfType<RateObservation>()).ToArray();
+            _playerObservation = playerObservation;
+            var observations = _streamObservations.Values.Concat(new[] { _observation, _browserObservation, playerObservation }.OfType<RateObservation>()).ToArray();
             var decision = BrowserSourcePolicy.HoldIfRequired(_settings, browser, _browserObservation,
                 SampleRatePolicy.Evaluate(_settings, sources, observations));
             _lastDecision = decision;
@@ -1098,7 +1103,7 @@ internal sealed class TrayContext : ApplicationContext
             {
                 RateDecisionReason.CatalogMetadata => "Apple Music catalog estimate",
                 RateDecisionReason.BrowserDecoder => "Media file header",
-                RateDecisionReason.PlayerMetadata => "Fooyin track metadata",
+                RateDecisionReason.PlayerMetadata => spotifyQuality is null ? "Fooyin track metadata" : "Spotify File quality",
                 _ => "Submitted PCM"
             };
             var depthFallback = sourceBits is { } bits && bits != target.BitsPerSample
@@ -1177,8 +1182,13 @@ internal sealed class TrayContext : ApplicationContext
                     && _streamMonitor?.IsEvidenceCurrent(observedStreamVersion) != true) return null;
                 if (decision.Reason == RateDecisionReason.BrowserDecoder
                     && _browserBridge?.IsEvidenceCurrent(browser.Version) != true) return null;
-                if (decision.Reason == RateDecisionReason.PlayerMetadata && (fooyin is null
-                    || FooyinFormatReport.Read(_fooyinReportPath, fooyin, selectedRevision) != fooyinObservation)) return null;
+                if (decision.Reason == RateDecisionReason.PlayerMetadata)
+                {
+                    var current = spotify is not null
+                        ? await _spotifyFileQuality.ReadAsync(spotify.Key) == spotifyQuality
+                        : fooyin is not null && FooyinFormatReport.Read(_fooyinReportPath, fooyin, selectedRevision) == playerObservation;
+                    if (!current || _exiting || epoch != Volatile.Read(ref _epoch) || !_playback.IsCurrent(playbackVersion)) return null;
+                }
                 if (decision.Reason == RateDecisionReason.CatalogMetadata
                     && (selectedKey is null || catalogSession is null
                         || _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) != true)) return null;
@@ -1732,7 +1742,7 @@ internal sealed class TrayContext : ApplicationContext
             if (source is not null)
             {
                 _streamObservations.TryGetValue(source.Identity, out var streamObservation);
-                var display = SourceRatePresentation.Describe(source, _settings, _browserObservation ?? _fooyinObservation ?? _observation, streamObservation,
+                var display = SourceRatePresentation.Describe(source, _settings, _browserObservation ?? _playerObservation ?? _observation, streamObservation,
                     _browserBridge?.Snapshot, _mediaPlayback.GetValueOrDefault(source.Identity));
                 // Show capability immediately after selection, before the next census. A saved
                 // Apple Music preference never implies a detector exists for another app.
@@ -1754,7 +1764,7 @@ internal sealed class TrayContext : ApplicationContext
                         : "Selected app is unavailable. Output stays unchanged while waiting for its stream.";
             }
             _popup.Render(_snapshot.Devices, _snapshot.Sources, _snapshot.Formats, _snapshot.Current,
-                _settings, _suspended ? _powerStatus : status, evidence, _applying || _suspended, _browserObservation ?? _fooyinObservation ?? _observation, _streamObservations, _browserBridge?.Snapshot, _mediaPlayback, _observation);
+                _settings, _suspended ? _powerStatus : status, evidence, _applying || _suspended, _browserObservation ?? _playerObservation ?? _observation, _streamObservations, _browserBridge?.Snapshot, _mediaPlayback, _observation);
             _popup.SetFavoriteAutoSwitchStatus(_favoriteAutoStatus);
             _popup.SetFullscreenStatus(_fullscreenStatus);
             if (_popup.DiagnosticsVisible) RenderDiagnostics();
@@ -1789,7 +1799,7 @@ internal sealed class TrayContext : ApplicationContext
         var streamRate = source is not null && stream is not null && stream.SessionToken == source.SessionToken
             && stream.SelectionRevision == _settings.SelectionRevision ? stream.SampleRateHz : null;
         var target = source is null ? "No current audio session"
-            : SourceRatePresentation.Describe(source, _settings, _browserObservation ?? _fooyinObservation ?? _observation, stream, _browserBridge?.Snapshot,
+            : SourceRatePresentation.Describe(source, _settings, _browserObservation ?? _playerObservation ?? _observation, stream, _browserBridge?.Snapshot,
                 _mediaPlayback.GetValueOrDefault(source.Identity)).Text;
         var browser = _browserBridge?.Snapshot ?? BrowserDecoderSnapshot.Empty;
         var confidence = _lastDecision?.Reason switch
@@ -1804,7 +1814,7 @@ internal sealed class TrayContext : ApplicationContext
             RateDecisionReason.BrowserHold => "Held browser target; fresh decoder evidence unavailable",
             RateDecisionReason.VerifiedNative => "Verified source adapter",
             RateDecisionReason.CatalogMetadata => "Catalog estimate; stream unverified",
-            RateDecisionReason.PlayerMetadata => "Fooyin track metadata; downstream processing is separate",
+            RateDecisionReason.PlayerMetadata => "Player-reported track format; downstream processing is separate",
             RateDecisionReason.SourcePaused or RateDecisionReason.SourceUnavailable => "Held target; no fresh source measurement",
             RateDecisionReason.ConflictingObservations => "Conflicting evidence; holding output",
             _ => "Unknown / no current automatic target"
@@ -1831,9 +1841,9 @@ internal sealed class TrayContext : ApplicationContext
             new("Confidence", confidence),
             new("Original media", _browserObservation?.SampleRateHz is { } decoded ? SourcePopup.FormatRate(decoded)
                 + (_browserObservation.BitsPerSample is { } fileBits ? $" · {fileBits}-bit file header" : " chosen tab evidence")
-                + "; app routing unverified" : _fooyinObservation?.SampleRateHz is { } fooyinRate
-                    ? SourcePopup.FormatRate(fooyinRate) + (_fooyinObservation.BitsPerSample is { } fooyinBits ? $" · {fooyinBits}-bit" : "")
-                        + " from Fooyin"
+                + "; app routing unverified" : _playerObservation?.SampleRateHz is { } playerRate
+                    ? SourcePopup.FormatRate(playerRate) + (_playerObservation.BitsPerSample is { } playerBits ? $" · {playerBits}-bit" : "")
+                        + " · " + _playerObservation.Detail
                     : "Unknown; submitted PCM does not establish content rate"),
             new("Submitted PCM", streamRate is { } rate
                 ? SourcePopup.FormatRate(rate) + (stream?.BitsPerSample is { } bits
@@ -1844,7 +1854,7 @@ internal sealed class TrayContext : ApplicationContext
                     ? $"On · {wantedBits}-bit " + (_lastDecision.ManualBitDepth ? "manual override"
                         : _lastDecision.Reason == RateDecisionReason.CatalogMetadata ? "catalog estimate · raise only"
                         : _lastDecision.Reason == RateDecisionReason.BrowserDecoder ? "file header"
-                        : _lastDecision.Reason == RateDecisionReason.PlayerMetadata ? "Fooyin track metadata" : "submitted PCM")
+                        : _lastDecision.Reason == RateDecisionReason.PlayerMetadata ? "player metadata" : "submitted PCM")
                     : source?.SupportsAutomaticRate == true ? "On · keeping output depth for Apple Music"
                     : "On · keeping output depth until usable evidence"
                 : "Off · keep output depth"),

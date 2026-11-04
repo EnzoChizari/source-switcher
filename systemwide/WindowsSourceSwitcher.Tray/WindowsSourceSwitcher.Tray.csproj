@@ -9,13 +9,14 @@
     <Nullable>enable</Nullable>
     <RootNamespace>WindowsSourceSwitcher.Tray</RootNamespace>
     <AssemblyName>WindowsSourceSwitcher.Tray</AssemblyName>
-    <Version>1.4.0</Version>
+    <Version>1.4.1</Version>
     <ApplicationIcon>Assets/TrayMixerBlack.ico</ApplicationIcon>
     <Product>Source Switcher</Product>
     <Description>Experimental shared-mode master-source tray controller based on WindowsLosslessSwitcher.</Description>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <EmbeddedResource Include="Assets/TrayMixer*.ico" />
     <Compile Include="../WindowsSourceSwitcher.BrowserHost/WindowsBrowserPeerIdentity.cs" Link="Audio/WindowsBrowserPeerIdentity.cs" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.8" />
