@@ -83,7 +83,7 @@ public sealed class MinimalDarkThemeTests
     {
         using var form = new Form();
         var tabs = new MinimalTabControl { Dock = DockStyle.Fill };
-        var pages = new[] { new TabPage("Sources"), new TabPage("Mixer"), new TabPage("Controls"), new TabPage("Diagnostics") };
+        var pages = new[] { new TabPage("Sources"), new TabPage("Mixer"), new TabPage("Settings"), new TabPage("Diagnostics") };
         tabs.TabPages.AddRange(pages);
         form.Controls.Add(tabs);
         MinimalDarkTheme.Apply(form);
@@ -98,7 +98,7 @@ public sealed class MinimalDarkThemeTests
 
         Assert.Equal(2, selections);
         Assert.Same(pages[3], tabs.SelectedTab);
-        Assert.Equal(["Sources", "Mixer", "Controls", "Diagnostics"], tabs.TabPages.Cast<TabPage>().Select(page => page.Text));
+        Assert.Equal(["Sources", "Mixer", "Settings", "Diagnostics"], tabs.TabPages.Cast<TabPage>().Select(page => page.Text));
         Assert.False(form.Visible);
         Assert.Equal(AccessibleRole.PageTabList, tabs.AccessibilityObject.Role);
     });

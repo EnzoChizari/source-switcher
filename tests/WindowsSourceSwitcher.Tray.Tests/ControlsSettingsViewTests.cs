@@ -181,9 +181,9 @@ public sealed class ControlsSettingsViewTests
     {
         using var popup = new SourcePopup();
         var tabs = Find<TabControl>(popup).Single();
-        Assert.Equal(["Sources", "Mixer", "Controls", "Diagnostics"], tabs.TabPages.Cast<TabPage>().Select(page => page.Text));
+        Assert.Equal(["Sources", "Mixer", "Settings", "Diagnostics"], tabs.TabPages.Cast<TabPage>().Select(page => page.Text));
         popup.SelectControlsTab();
-        Assert.Equal("Controls", tabs.SelectedTab!.Text);
+        Assert.Equal("Settings", tabs.SelectedTab!.Text);
         Assert.False(popup.MixerVisible);
         popup.SelectMixerTab();
         Assert.Equal("Mixer", tabs.SelectedTab!.Text);

@@ -365,7 +365,7 @@ internal sealed class TrayContext : ApplicationContext
                     ? $"v{available.Version} is available. Update restarts Source Switcher."
                     : $"Source Switcher v{Program.DisplayVersion} is up to date.";
                 if (startup && _availableUpdate is not null && !_exiting)
-                    _icon.ShowBalloonTip(5000, Program.ProductName, status + " Open Controls to install.", ToolTipIcon.Info);
+                    _icon.ShowBalloonTip(5000, Program.ProductName, status + " Open Settings to install.", ToolTipIcon.Info);
             }
         }
         catch (OperationCanceledException) { status = "The update request timed out. Try again."; }

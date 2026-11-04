@@ -1,6 +1,6 @@
 # Source Switcher for Helium
 
-1. Run the Source Switcher 1.0 build that includes Helium. In **Controls → Helium**, select **Register browser helper** and enable **Helium tab integration**. Register again if you move the app.
+1. Run the Source Switcher 1.0 build that includes Helium. In **Settings → Helium**, select **Register browser helper** and enable **Helium tab integration**. Register again if you move the app.
 2. In Helium, open `chrome://extensions`, enable **Developer mode**, and choose **Load unpacked**. Select the `browser/chromium` folder inside the extracted Source Switcher folder. Reload if the extension is already loaded from that folder. If the old DX5 Helium Tab Link points at a different folder, remove that entry before loading this one.
 3. Open the extension popup and click **Follow this tab** or check **Automatically follow the active tab**. Start playback, then select Helium (sometimes listed as `chrome`) as master in **Sources**. Following before you start gives the extension a chance to see streaming initialization.
 

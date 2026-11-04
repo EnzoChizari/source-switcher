@@ -30,7 +30,7 @@ internal sealed class SourcePopup : Form
     private readonly Bitmap _sourceRowBitmap = new(1, 30);
     private readonly TabPage _sourcesTab = new("Sources");
     private readonly TabPage _mixerTab = new("Mixer");
-    private readonly TabPage _controlsTab = new("Controls");
+    private readonly TabPage _controlsTab = new("Settings");
     private readonly TabPage _diagnosticsTab = new("Diagnostics");
     private readonly VolumeMixerView _mixer = new();
     private readonly ControlsSettingsView _controls = new();
