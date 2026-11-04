@@ -37,14 +37,13 @@ internal sealed class DarkScrollBarPainter : NativeWindow, IDisposable
         if (message.Msg == 0x0317 /* WM_PRINT */ && message.WParam != IntPtr.Zero
             && (message.LParam.ToInt64() & 0x2 /* PRF_NONCLIENT */) != 0)
             Paint(message.WParam);
-        else if (message.Msg is 0x0085 or 0x000F or 0x0005 or 0x0047 or 0x0018
+        else if (message.Msg is 0x0085 or 0x0086 or 0x0088 or 0x000F or 0x0005 or 0x0047 or 0x0018 or 0x0007 or 0x0008 or 0x000A
             or 0x0114 or 0x0115 or 0x020A or 0x020E or 0x00A0 or 0x00A1 or 0x00A2
             or 0x00A3 or 0x00A4 or 0x00A5 or 0x0200 or 0x0201 or 0x0202 or 0x02A2
             or 0x02A3 or 0x0113 or 0x007D or 0x001F or 0x00F4)
             Paint(IntPtr.Zero);
-        // Messages include native nonclient/client mouse activity, scroll/wheel/size,
-        // native scrollbar tracking timers, style changes and cancel/capture transitions.
-        // Every message is forwarded unchanged before any drawing occurs.
+        // Also repaint when focus or modal enablement changes, which can redraw the
+        // native bars without scrolling. Every message retains its native behavior.
     }
 
     public void Redraw()

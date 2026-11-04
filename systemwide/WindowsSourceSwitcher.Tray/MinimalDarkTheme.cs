@@ -129,7 +129,8 @@ internal static class MinimalDarkTheme
     private static void AttachScrollBars(Control control, Attachment attachment)
     {
         if (!control.IsHandleCreated || control.IsDisposed
-            || control is not ListView && control is not ScrollableControl { AutoScroll: true }) return;
+            || control is not (ListView or ScrollableControl { AutoScroll: true }
+                or TextBox { Multiline: true, ScrollBars: not ScrollBars.None })) return;
         if (attachment.ScrollBars?.IsAttachedTo(control.Handle) != true)
         {
             attachment.ScrollBars?.Dispose();

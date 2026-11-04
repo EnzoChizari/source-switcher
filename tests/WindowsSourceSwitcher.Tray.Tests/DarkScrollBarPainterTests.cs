@@ -20,18 +20,59 @@ public sealed class DarkScrollBarPainterTests
         MinimalDarkTheme.Apply(form);
         form.Show();
         Application.DoEvents();
-        using var bitmap = new Bitmap(list.Width, list.Height);
+        AssertDarkBars(list, -5, -6);
+        var initial = list.TopItem!.Index;
+        SendMessage(list.Handle, 0x0115, (IntPtr)3 /* SB_PAGEDOWN */, IntPtr.Zero);
+        Application.DoEvents();
+        Assert.True(list.TopItem!.Index > initial);
+        list.Columns.Clear(); // Disposing/recreating native chrome must remain safe.
+        Application.DoEvents();
+    });
+
+    [Fact]
+    public void SettingsAndChangelogScrollbarsStayDarkWhenAModalDisablesItsOwner() => OnSta(() =>
+    {
+        using var owner = new Form { ClientSize = new Size(510, 340), ShowInTaskbar = false };
+        var settings = new ControlsSettingsView();
+        owner.Controls.Add(settings);
+        MinimalDarkTheme.Apply(owner);
+        owner.Show();
+        Application.DoEvents();
+        AssertDarkBars(settings, -5);
+
+        using var dialog = new UpdateChangelogDialog(new(new Version(1, 2, 4), 1, 10, "test",
+            string.Join(Environment.NewLine, Enumerable.Range(1, 40).Select(number => $"Change {number}"))));
+        Exception? failure = null;
+        dialog.Shown += (_, _) => dialog.BeginInvoke(() =>
+        {
+            try
+            {
+                var notes = dialog.Controls[0].Controls.OfType<TextBox>().Single();
+                AssertDarkBars(notes, -5);
+                AssertDarkBars(settings, -5);
+            }
+            catch (Exception error) { failure = error; }
+            finally { dialog.Close(); }
+        });
+        dialog.ShowDialog(owner);
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+        AssertDarkBars(settings, -5);
+    });
+
+    private static void AssertDarkBars(Control control, params int[] bars)
+    {
+        using var bitmap = new Bitmap(control.Width, control.Height);
         using (var graphics = Graphics.FromImage(bitmap))
         {
             var dc = graphics.GetHdc();
-            try { Assert.True(PrintWindow(list.Handle, dc, 2)); }
+            try { Assert.True(PrintWindow(control.Handle, dc, 2)); }
             finally { graphics.ReleaseHdc(dc); }
         }
-        Assert.True(GetWindowRect(list.Handle, out var window));
-        foreach (var id in new[] { -5, -6 })
+        Assert.True(GetWindowRect(control.Handle, out var window));
+        foreach (var id in bars)
         {
             var info = new ScrollInfo { Size = Marshal.SizeOf<ScrollInfo>() };
-            Assert.True(GetScrollBarInfo(list.Handle, id, ref info));
+            Assert.True(GetScrollBarInfo(control.Handle, id, ref info));
             Assert.Equal(0u, info.State & 0x18000u);
             var area = Rectangle.Intersect(new Rectangle(0, 0, bitmap.Width, bitmap.Height),
                 Rectangle.FromLTRB(info.Bounds.Left - window.Left, info.Bounds.Top - window.Top,
@@ -44,15 +85,10 @@ public sealed class DarkScrollBarPainterTests
                     var color = bitmap.GetPixel(x, y);
                     if (color.R > 220 && color.G > 220 && color.B > 220) white++;
                 }
-            Assert.True(white < area.Width * area.Height / 20, $"Native bar {id} retained {white} white pixels.");
+            Assert.True(white < area.Width * area.Height / 20,
+                $"{control.GetType().Name} bar {id} retained {white} white pixels.");
         }
-        var initial = list.TopItem!.Index;
-        SendMessage(list.Handle, 0x0115, (IntPtr)3 /* SB_PAGEDOWN */, IntPtr.Zero);
-        Application.DoEvents();
-        Assert.True(list.TopItem!.Index > initial);
-        list.Columns.Clear(); // Disposing/recreating native chrome must remain safe.
-        Application.DoEvents();
-    });
+    }
 
     private static void OnSta(Action action)
     {

@@ -1,5 +1,9 @@
 # Source Switcher changelog
 
+## v1.2.4
+
+- Settings and the update changelog use dark scrollbars, including while the changelog is open over Settings.
+
 ## v1.2.3
 
 - With both Apple Music catalog estimates and Follow source bit depth enabled, the controller uses the same track's estimated rate and depth together.
