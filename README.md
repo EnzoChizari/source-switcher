@@ -4,7 +4,7 @@
 
 Source Switcher lives in the Windows notification area. Choose a playback device and a source app, then follow the app's observed sample rate or set a rate yourself. If you regularly move between a music player, a video player, and other desktop apps, you can set priorities so the source changes with your listening.
 
-[Download](https://github.com/EnzoChizari/source-switcher/releases) · [Quick start](#quick-start) · [Install the Helium extension](#install-the-helium-extension) · [How switching works](#how-switching-works) · [Troubleshooting](#troubleshooting) · [Changelog](SOURCE_SWITCHER_CHANGELOG.md)
+[Download](https://github.com/EnzoChizari/source-switcher/releases) · [Quick start](#quick-start) · [Install the Chrome extension](#install-the-chrome-extension) · [How switching works](#how-switching-works) · [Troubleshooting](#troubleshooting) · [Changelog](SOURCE_SWITCHER_CHANGELOG.md)
 
 ## Quick start
 
@@ -16,11 +16,11 @@ Use the self-contained release ZIP on a Windows x64 PC. The ZIP includes the .NE
 4. Start playback in a source app, then double-click its row in **Sources** to make it the master. The master is the app whose format drives the selected output.
 5. Leave the rate on **Auto** to follow the observed sample rate, or choose one of the rates supported by the selected output. Open **Diagnostics** to see the observed format and the controller's status.
 
-## Install the Helium extension
+## Install the Chrome extension
 
-1. In Source Switcher, open **Settings → Helium**. Enable **Helium tab integration** and click **Register browser helper**.
-2. In Helium, open `chrome://extensions` and turn on **Developer mode**. Click **Load unpacked** and select `browser/chromium` inside the extracted Source Switcher folder.
-3. On the tab you want to use, open **Source Switcher Tab Link** from Helium's Extensions menu. Click **Follow this tab**, or enable **Automatically follow the active tab**. Start playback and double-click Helium (sometimes listed as `chrome`) in **Sources**.
+1. In Source Switcher, open **Settings**. Enable browser tab integration and click **Register browser helper**.
+2. In Chrome, open `chrome://extensions` and turn on **Developer mode**. Click **Load unpacked** and select `browser/chromium` inside the extracted Source Switcher folder.
+3. On the tab you want to use, open **Source Switcher Tab Link** from Chrome's Extensions menu. Click **Follow this tab**, or enable **Automatically follow the active tab**. Start playback and double-click Chrome (sometimes listed as `chrome`) in **Sources**.
 4. To test the link, choose **Open PCM playback demo** in the extension. Follow the demo tab and play one test at a time.
 
 After an app update, click **Reload** on the extension's card at `chrome://extensions` and reopen the media tab. Register the helper again if you move the app. On a new website, open the extension once to grant temporary access. Unsupported players can use the Windows stream rate when available. [Extension details](browser/chromium/README.md)
