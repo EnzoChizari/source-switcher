@@ -1,5 +1,11 @@
 # Source Switcher changelog
 
+## v1.2.3
+
+- With both Apple Music catalog estimates and Follow source bit depth enabled, the controller uses the same track's estimated rate and depth together.
+- Follow source bit depth now handles 32-bit float streams such as those submitted by Fooyin.
+- Diagnostics distinguish Apple Music's estimated depth from the Windows stream's submitted precision.
+
 ## v1.2.2
 
 - The target-rate dropdown shows only rates supported by the selected output at its current bit depth and channel count.

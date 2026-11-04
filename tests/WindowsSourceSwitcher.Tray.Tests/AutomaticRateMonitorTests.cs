@@ -110,7 +110,8 @@ public sealed class AutomaticRateMonitorTests
         await monitor.StartAsync(CancellationToken.None);
         monitor.SelectSource(Source(), 0);
         provider.Publish(Track());
-        await ReadRateAsync(observed.Reader, 44100);
+        var first = await ReadRateAsync(observed.Reader, 44100);
+        Assert.Equal(24, first.BitDepth);
         Assert.Equal(1, resolver.Calls);
 
         await monitor.ResolveCurrentAsync(CancellationToken.None);
@@ -120,7 +121,8 @@ public sealed class AutomaticRateMonitorTests
         // A normal census/replay can use the new cache entry. Only explicit
         // Retry bypasses it; repeatedly reading a row does not cause networking.
         provider.Publish(Track());
-        await ReadRateAsync(observed.Reader, 96000);
+        var cached = await ReadRateAsync(observed.Reader, 96000);
+        Assert.Equal(24, cached.BitDepth);
         Assert.Equal(2, resolver.Calls);
     }
 

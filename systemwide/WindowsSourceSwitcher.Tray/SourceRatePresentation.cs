@@ -25,6 +25,7 @@ internal static class SourceRatePresentation
             if (IsCurrentCatalogEstimate(source, settings, observation))
                 return new(FormatRate(observation!.SampleRateHz!.Value) + " est.",
                     "Apple Music track estimate, independent of the master and mixer; delivered asset remains unverified."
+                    + (settings.FollowSourceBitDepth && observation.BitsPerSample is { } depth ? $" Estimated depth is {depth}-bit." : "")
                     + (!source.IsActive || playback == FavoritePlaybackState.NotPlaying ? " Output held during pause." : ""), observation.Detail);
             var heldDetail = KeysEqual(source.Identity, settings.LastKnownSourceKey)
                 && settings.LastKnownSampleRateHz is { } appleHeld && SampleRates.IsValid(appleHeld)

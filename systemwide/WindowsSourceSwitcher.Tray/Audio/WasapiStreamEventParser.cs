@@ -36,8 +36,8 @@ internal static class WasapiStreamEventParser
             || !values.TryGetValue("EndpointId", out var endpoint) || endpoint is not string endpointId
             || string.IsNullOrWhiteSpace(endpointId))
             return null;
-        var bits = format == Pcm && TryNumber(values, "ValidBitsPerSample", out var validBits)
-            && validBits is 16 or 24 or 32 ? (int?)validBits : null;
+        var bits = TryNumber(values, "ValidBitsPerSample", out var validBits)
+            ? AudioServiceStreamEventParser.GetPcmWidth(format, validBits) : null;
         return new(StreamSignalKind.Initialize, processId, clientId, timestampUtc, endpointId, (int)rate, bits);
     }
 

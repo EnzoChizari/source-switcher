@@ -31,9 +31,10 @@ public sealed class WasapiStreamEventParserTests
     [InlineData(16, true, 16)]
     [InlineData(24, true, 24)]
     [InlineData(32, true, 32)]
-    [InlineData(32, false, null)]
+    [InlineData(32, false, 32)]
+    [InlineData(24, false, null)]
     [InlineData(20, true, null)]
-    public void OnlySupportedIntegerValidBitsAreEvidence(int validBits, bool integer, int? expected)
+    public void SupportedIntegerAndFloatStreamWidthsAreEvidence(int validBits, bool integer, int? expected)
     {
         var values = Initialization();
         values["ValidBitsPerSample"] = validBits;

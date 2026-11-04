@@ -105,7 +105,7 @@ internal sealed class ControlsSettingsView : UserControl
         _detectionLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _detectionLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         Note("Stream rates describe PCM sent to Windows. Apple Music catalog rates are estimates; original media remains unverified.");
-        Note("Bit depth follows observed integer PCM. Unknown precision or a rate override keeps the current depth.");
+        Note("Bit depth follows observed PCM, including 32-bit float, or an enabled Apple Music catalog estimate. Unknown depth or a rate override keeps the current depth.");
         Section("Output capabilities");
         Add(_outputCapabilities);
         Note("Highest probed PCM rate at each depth for the selected output and channel count. Playback follows the source format within these limits.");

@@ -20,8 +20,8 @@ public sealed class AutomaticRateMonitor : IAsyncDisposable
     private readonly DiagnosticsLogger _logger;
     private readonly CancellationTokenSource _lifetime = new();
     private const int CatalogCacheCapacity = 256;
-    private readonly Dictionary<string, LinkedListNode<(string Key, int Rate, string Evidence)>> _catalogCache = new(StringComparer.Ordinal);
-    private readonly LinkedList<(string Key, int Rate, string Evidence)> _catalogRecency = new();
+    private readonly Dictionary<string, LinkedListNode<(string Key, int Rate, int? Depth, string Evidence)>> _catalogCache = new(StringComparer.Ordinal);
+    private readonly LinkedList<(string Key, int Rate, int? Depth, string Evidence)> _catalogRecency = new();
     private readonly HashSet<Task> _running = [];
     private PlatformAudioSource? _selectedSource;
     private TrackSnapshot? _latestTrack;
@@ -243,15 +243,14 @@ public sealed class AutomaticRateMonitor : IAsyncDisposable
                 return;
             }
 
-            (int Rate, string Evidence) cached;
             lock (_sync)
             {
                 if (!bypassCatalogCache && _catalogCache.TryGetValue(track.UniqueKey, out var cachedNode))
                 {
                     _catalogRecency.Remove(cachedNode);
                     _catalogRecency.AddFirst(cachedNode);
-                    cached = (cachedNode.Value.Rate, cachedNode.Value.Evidence);
-                    PublishIfCurrent(source, revision, generation, track, cached.Rate, cached.Evidence);
+                    var cached = cachedNode.Value;
+                    PublishIfCurrent(source, revision, generation, track, cached.Rate, cached.Evidence, cached.Depth);
                     return;
                 }
             }
@@ -265,7 +264,9 @@ public sealed class AutomaticRateMonitor : IAsyncDisposable
                 return;
             }
 
-            var evidence = $"Apple Music catalog estimate: {result.SampleRateHz / 1000d:0.###} kHz, "
+            int? depth = result.BitDepth is 16 or 24 or 32 ? result.BitDepth : null;
+            var depthText = depth is { } bits ? $" · {bits}-bit" : "";
+            var evidence = $"Apple Music catalog estimate: {result.SampleRateHz / 1000d:0.###} kHz{depthText}, "
                 + $"highest available lossless variant for '{track.Title}'. "
                 + "Actual playback may use another variant or a local file; this is not a measured native stream rate.";
             lock (_sync)
@@ -277,10 +278,10 @@ public sealed class AutomaticRateMonitor : IAsyncDisposable
                 RemoveCachedTrack(track.UniqueKey);
                 if (_catalogCache.Count >= CatalogCacheCapacity)
                     RemoveCachedTrack(_catalogRecency.Last!.Value.Key);
-                var node = _catalogRecency.AddFirst((track.UniqueKey, result.SampleRateHz, evidence));
+                var node = _catalogRecency.AddFirst((track.UniqueKey, result.SampleRateHz, depth, evidence));
                 _catalogCache.Add(track.UniqueKey, node);
             }
-            PublishIfCurrent(source, revision, generation, track, result.SampleRateHz, evidence);
+            PublishIfCurrent(source, revision, generation, track, result.SampleRateHz, evidence, depth);
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
         {
@@ -310,7 +311,7 @@ public sealed class AutomaticRateMonitor : IAsyncDisposable
     }
 
     private void PublishIfCurrent(PlatformAudioSource source, long revision, long generation,
-        TrackSnapshot? track, int? rate, string evidence)
+        TrackSnapshot? track, int? rate, string evidence, int? depth = null)
     {
         lock (_sync)
         {
@@ -326,7 +327,7 @@ public sealed class AutomaticRateMonitor : IAsyncDisposable
                 evidence = "Apple Music's playback or metadata changed during lookup. Retaining the last confirmed rate.";
             }
             RateObserved?.Invoke(this, new(source.Identity, source.SessionToken, revision,
-                generation, track?.UniqueKey, rate, evidence));
+                generation, track?.UniqueKey, rate, evidence, rate is null ? null : depth));
         }
     }
 

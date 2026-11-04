@@ -22,7 +22,7 @@ public sealed record RateObservation(
     int? SampleRateHz,
     RateProvenance Provenance,
     string Detail,
-    int? PcmBitsPerSample = null);
+    int? BitsPerSample = null);
 
 public enum RateDecisionReason
 {
@@ -108,11 +108,12 @@ public static class SampleRatePolicy
         // the endpoint-dependent PCM stream back to the old mixer rate.
         if (settings.CatalogRateDetectionEnabled && AppleMusicIdentity.IsOfficialExecutable(source.ExecutablePath))
         {
-            var appleRates = eligibleObservations.Where(observation => observation.Provenance == RateProvenance.CatalogMetadata)
-                .Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray();
+            var appleFormats = eligibleObservations.Where(observation => observation.Provenance == RateProvenance.CatalogMetadata).ToArray();
+            var appleRates = appleFormats.Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray();
             return appleRates.Length switch
             {
-                1 => new(appleRates[0], RateDecisionReason.CatalogMetadata, "Following the opted-in Apple Music catalog estimate for this track; the actual delivered asset is unverified."),
+                1 => new(appleRates[0], RateDecisionReason.CatalogMetadata, "Following the opted-in Apple Music catalog estimate for this track; the actual delivered asset is unverified.",
+                    settings.FollowSourceBitDepth ? AgreeOnBitDepth(appleFormats) : null),
                 > 1 => new(held, RateDecisionReason.ConflictingObservations, "Apple Music track metadata is conflicting; retaining the confirmed rate."),
                 _ => new(held, RateDecisionReason.NativeRateUnknown, "Apple Music track estimate is pending or unavailable; holding output. Its Windows PCM stream can remain fixed across tracks.")
             };
@@ -123,13 +124,10 @@ public static class SampleRatePolicy
                 .ToArray()
             : [];
         var streamRates = streams.Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray();
-        var streamBits = settings.FollowSourceBitDepth
-            ? streams.Select(observation => observation.PcmBitsPerSample).Distinct().Take(2).ToArray()
-            : [];
         if (streamRates.Length > 0)
             return streamRates.Length == 1
                 ? new(streamRates[0], RateDecisionReason.WasapiStream, "Following the selected app's observed WASAPI PCM stream rate; the app may have resampled its original media.",
-                    streamBits is [16 or 24 or 32] ? streamBits[0] : null)
+                    settings.FollowSourceBitDepth ? AgreeOnBitDepth(streams) : null)
                 : new(held, RateDecisionReason.ConflictingObservations, "Selected app has different simultaneous stream rates; retaining its last confirmed rate.");
 
         var catalogRates = settings.CatalogRateDetectionEnabled
@@ -143,6 +141,12 @@ public static class SampleRatePolicy
             > 1 => new(held, RateDecisionReason.ConflictingObservations, "Selected application has conflicting catalog rate estimates; use a manual override."),
             _ => new(held, RateDecisionReason.NativeRateUnknown, "Native rate is not observable; retaining the last confirmed rate. Set a manual override to choose a rate.")
         };
+    }
+
+    private static int? AgreeOnBitDepth(IEnumerable<RateObservation> observations)
+    {
+        var depths = observations.Select(observation => observation.BitsPerSample).Distinct().Take(2).ToArray();
+        return depths is [16 or 24 or 32] ? depths[0] : null;
     }
 
     private static bool KeysEqual(string? left, string? right) => StringComparer.OrdinalIgnoreCase.Equals(left, right);

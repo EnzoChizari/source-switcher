@@ -1047,7 +1047,7 @@ internal sealed class TrayContext : ApplicationContext
             var formatLabel = sourceBits is null ? SourcePopup.FormatRate(desired)
                 : $"{SourcePopup.FormatRate(desired)} at {target.BitsPerSample}-bit";
             var depthFallback = sourceBits is { } bits && bits != target.BitsPerSample
-                ? $" Source submits {bits}-bit PCM; the output supports {target.BitsPerSample}-bit at this rate." : "";
+                ? $" {(decision.Reason == RateDecisionReason.CatalogMetadata ? "Apple Music catalog estimate" : "Submitted PCM")} is {bits}-bit. Output uses {target.BitsPerSample}-bit at this rate." : "";
             if (snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
                 && snapshot.Current.BitDepth == target.BitsPerSample)
             {
@@ -1191,7 +1191,7 @@ internal sealed class TrayContext : ApplicationContext
             _appleSwitchFailureKey = null;
             _status = result.Success ? $"Applied {formatLabel}. Other shared-mode apps use Windows resampling.{depthFallback}" : "Switch failed: " + result.Detail;
             if (result.Success && appleSwitch is { PlaybackObserved: false })
-                _status = $"Applied {SourcePopup.FormatRate(desired)}. " + appleSwitch.Detail;
+                _status = $"Applied {formatLabel}.{depthFallback} " + appleSwitch.Detail;
             // Our own format write emits endpoint property notifications and can advance
             // the device epoch before readback returns. Remember the successful format
             // for the same semantic selection, so a paused/restarting stream cannot
@@ -1616,7 +1616,7 @@ internal sealed class TrayContext : ApplicationContext
         _observation = _settings.CatalogRateDetectionEnabled && raw is not null
             && _monitor?.IsMetadataCurrent(raw.Generation, raw.SourceIdentity, raw.SessionToken, 0) == true
             ? new(raw.SourceIdentity, raw.SessionToken, _settings.SelectionRevision, raw.SampleRateHz,
-                raw.SampleRateHz is null ? RateProvenance.Unknown : RateProvenance.CatalogMetadata, raw.Evidence)
+                raw.SampleRateHz is null ? RateProvenance.Unknown : RateProvenance.CatalogMetadata, raw.Evidence, raw.BitDepth)
             : null;
     }
 
@@ -1737,10 +1737,12 @@ internal sealed class TrayContext : ApplicationContext
             new("Confidence", confidence),
             new("Original media", _browserObservation?.SampleRateHz is { } decoded ? SourcePopup.FormatRate(decoded) + " chosen tab decoder; app routing unverified" : "Unknown; submitted PCM does not establish content rate"),
             new("Submitted PCM", streamRate is { } rate
-                ? SourcePopup.FormatRate(rate) + (stream?.PcmBitsPerSample is { } bits ? $" · {bits}-bit integer" : "")
+                ? SourcePopup.FormatRate(rate) + (stream?.BitsPerSample is { } bits ? $" · {bits}-bit stream" : "")
                 : "Not observed"),
             new("Follow bit depth", _settings.FollowSourceBitDepth
-                ? _lastDecision?.DesiredBitsPerSample is { } wantedBits ? $"On · {wantedBits}-bit source" : "On · waiting for integer PCM evidence"
+                ? _lastDecision?.DesiredBitsPerSample is { } wantedBits
+                    ? $"On · {wantedBits}-bit " + (_lastDecision.Reason == RateDecisionReason.CatalogMetadata ? "catalog estimate" : "submitted PCM")
+                    : "On · waiting for bit-depth evidence"
                 : "Off · keep output depth"),
             new("Windows mix", Format(_snapshot.Mix)),
             new("Endpoint format", Format(_snapshot.Current)),

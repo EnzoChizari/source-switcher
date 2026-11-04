@@ -9,18 +9,37 @@ public sealed class SampleRatePolicyTests
     private const string OtherKey = @"C:\Apps\Browser\browser.exe";
 
     [Fact]
-    public void DepthIsOptInAndRequiresUnambiguousCurrentIntegerPcm()
+    public void DepthIsOptInAndRequiresUnambiguousCurrentPcm()
     {
         var settings = SelectedWithHeldRate();
-        var stream = Observation(settings, 48000) with { Provenance = RateProvenance.WasapiStream, PcmBitsPerSample = 24 };
+        var stream = Observation(settings, 48000) with { Provenance = RateProvenance.WasapiStream, BitsPerSample = 24 };
         Assert.Null(SampleRatePolicy.Evaluate(settings, [Source()], [stream]).DesiredBitsPerSample);
         settings.FollowSourceBitDepth = true;
         Assert.Equal(24, SampleRatePolicy.Evaluate(settings, [Source()], [stream]).DesiredBitsPerSample);
-        Assert.Null(SampleRatePolicy.Evaluate(settings, [Source()], [stream, stream with { PcmBitsPerSample = null }]).DesiredBitsPerSample);
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [Source()], [stream, stream with { BitsPerSample = null }]).DesiredBitsPerSample);
         Assert.Null(SampleRatePolicy.Evaluate(settings, [Source(active: false)], [stream]).DesiredBitsPerSample);
         Assert.Null(SampleRatePolicy.Evaluate(settings, [Source(token: "new-session")], [stream]).DesiredBitsPerSample);
         settings.ManualSampleRatesHz[PlayerKey] = 48000;
         Assert.Null(SampleRatePolicy.Evaluate(settings, [Source()], [stream]).DesiredBitsPerSample);
+    }
+
+    [Fact]
+    public void AppleUsesRateAndBitDepthFromTheSameOptedInCatalogEstimate()
+    {
+        var settings = new SourceSettings { CatalogRateDetectionEnabled = true, FollowSourceBitDepth = true };
+        const string apple = @"C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.2.3.4_x64__nzyj5cx40ttqa\AppleMusic.exe";
+        settings.SelectMaster(apple, "Apple Music");
+        var source = Source(apple) with { ExecutablePath = apple };
+        var catalog = Observation(settings, 192000) with { SourceKey = apple, Provenance = RateProvenance.CatalogMetadata, BitsPerSample = 24 };
+        var stream = catalog with { Provenance = RateProvenance.WasapiStream, SampleRateHz = 48000, BitsPerSample = 16 };
+        var decision = SampleRatePolicy.Evaluate(settings, [source], [catalog, stream]);
+        Assert.Equal(RateDecisionReason.CatalogMetadata, decision.Reason);
+        Assert.Equal(192000, decision.DesiredSampleRateHz);
+        Assert.Equal(24, decision.DesiredBitsPerSample);
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [source], [catalog, catalog with { BitsPerSample = 16 }]).DesiredBitsPerSample);
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [source with { IsActive = false }], [catalog, stream]).DesiredBitsPerSample);
+        settings.FollowSourceBitDepth = false;
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [source], [catalog, stream]).DesiredBitsPerSample);
     }
 
     [Fact]

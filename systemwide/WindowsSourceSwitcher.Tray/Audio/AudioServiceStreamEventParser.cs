@@ -8,8 +8,7 @@ internal sealed record AudioServiceStreamState(
     string EndpointId, int SampleRateHz, int NumberOfChannels, int ValidBitsPerSample,
     Guid SubFormat, uint StreamFlags, bool IsRunning, DateTimeOffset TimestampUtc)
 {
-    public int? PcmBitsPerSample => SubFormat == AudioServiceStreamEventParser.Pcm && ValidBitsPerSample is 16 or 24 or 32
-        ? ValidBitsPerSample : null;
+    public int? PcmBitsPerSample => AudioServiceStreamEventParser.GetPcmWidth(SubFormat, ValidBitsPerSample);
 }
 
 /// <summary>
@@ -22,8 +21,12 @@ internal sealed record AudioServiceStreamState(
 internal static class AudioServiceStreamEventParser
 {
     public static readonly Guid ProviderId = new("3d2b6366-47a4-5e10-6974-e5f7de0d3f28");
-    internal static readonly Guid Pcm = new("00000001-0000-0010-8000-00aa00389b71");
+    private static readonly Guid Pcm = new("00000001-0000-0010-8000-00aa00389b71");
     private static readonly Guid Float = new("00000003-0000-0010-8000-00aa00389b71");
+
+    // Float32 describes the stream's sample representation, not the original asset precision.
+    internal static int? GetPcmWidth(Guid subFormat, long bits) =>
+        (subFormat == Pcm && bits is 16 or 24 or 32) || (subFormat == Float && bits == 32) ? (int)bits : null;
 
     public static AudioServiceStreamState? Parse(Guid provider, string eventName,
         int emitterProcessId, DateTimeOffset timestampUtc, IReadOnlyDictionary<string, object?> values)

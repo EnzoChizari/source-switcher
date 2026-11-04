@@ -11,4 +11,5 @@ public sealed record NativeRateObservation(
     long Generation,
     string? TrackKey,
     int? SampleRateHz,
-    string Evidence);
+    string Evidence,
+    int? BitDepth = null);
