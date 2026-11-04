@@ -9,6 +9,21 @@ public sealed class SampleRatePolicyTests
     private const string OtherKey = @"C:\Apps\Browser\browser.exe";
 
     [Fact]
+    public void DepthIsOptInAndRequiresUnambiguousCurrentIntegerPcm()
+    {
+        var settings = SelectedWithHeldRate();
+        var stream = Observation(settings, 48000) with { Provenance = RateProvenance.WasapiStream, PcmBitsPerSample = 24 };
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [Source()], [stream]).DesiredBitsPerSample);
+        settings.FollowSourceBitDepth = true;
+        Assert.Equal(24, SampleRatePolicy.Evaluate(settings, [Source()], [stream]).DesiredBitsPerSample);
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [Source()], [stream, stream with { PcmBitsPerSample = null }]).DesiredBitsPerSample);
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [Source(active: false)], [stream]).DesiredBitsPerSample);
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [Source(token: "new-session")], [stream]).DesiredBitsPerSample);
+        settings.ManualSampleRatesHz[PlayerKey] = 48000;
+        Assert.Null(SampleRatePolicy.Evaluate(settings, [Source()], [stream]).DesiredBitsPerSample);
+    }
+
+    [Fact]
     public void NoSelectionDoesNotUseAnActiveApplication()
     {
         var decision = SampleRatePolicy.Evaluate(new(), [Source(OtherKey)]);

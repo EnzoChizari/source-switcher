@@ -37,6 +37,27 @@ public sealed class EndpointRateApplierTests
         Assert.Equal(0, adapter.SupportReads);
     }
 
+    [Theory]
+    [InlineData(16, 16, 16)]
+    [InlineData(24, 32, 32)]
+    [InlineData(32, 24, 24)]
+    public void OptedInDepthUsesBestSupportedPrecisionAtTheSameRate(int sourceBits, int alternativeBits, int expectedBits)
+    {
+        var initial = sourceBits == 24 ? new EndpointFormat(48000, 16, 2) : Initial;
+        var expected = new EndpointFormat(48000, expectedBits, 2);
+        var adapter = new FakeAdapter
+        {
+            Device = initial, Mix = initial, DeviceAfter = expected, MixAfter = expected,
+            Supported = [new(48000, alternativeBits, 2), new(48000, 16, 2), new(96000, sourceBits, 2), new(48000, sourceBits, 6)]
+        };
+        var result = EndpointRateApplier.Apply(adapter, EndpointId, 48000, sourceBits);
+        Assert.True(result.Success);
+        if (expected == initial)
+            Assert.Empty(adapter.Writes);
+        else
+            Assert.Equal([expected], adapter.Writes);
+    }
+
     [Fact]
     public void MatchingDeviceWithWrongMixStillAttemptsChange()
     {

@@ -5,6 +5,7 @@ public sealed class SourceSettings
     public int SchemaVersion { get; set; } = 1;
     public bool SwitchingEnabled { get; set; } = true;
     public bool StreamRateDetectionEnabled { get; set; } = true;
+    public bool FollowSourceBitDepth { get; set; }
     public bool GlobalHotkeysEnabled { get; set; }
     public bool FavoriteAutoSwitchEnabled { get; set; }
     public bool FullscreenAutoSwitchEnabled { get; set; }

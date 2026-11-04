@@ -60,3 +60,9 @@ For a manual release fallback, use a fresh build and package directory. From Pow
 ```
 
 The release script uses the Git Credential Manager sign-in, includes corresponding source from the pushed revision, and verifies the uploaded archive before it publishes the draft. See START HERE.txt for private update access on another PC.
+
+## Bit depth and output capabilities
+
+Settings > Rate detection includes **Follow source bit depth**, off by default. It uses valid bits from unambiguous integer WASAPI PCM. Float streams, catalog estimates, browser-only rate evidence, and manual rate overrides retain the current depth. When enabled with usable evidence, the controller chooses the exact source depth if available, then the smallest supported higher depth, then the highest supported lower depth at the same sample rate and channel count. An unsupported rate leaves the format unchanged.
+
+Settings > Output capabilities shows the highest PCM rate Windows reports for each depth at the output's current channel count. The probes cover standard rates from 8 to 768 kHz. Windows must still accept and confirm a shared-mode format change. These readings describe Windows and the driver, and cannot verify native track precision or bit-perfect DAC playback.

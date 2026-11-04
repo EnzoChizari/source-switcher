@@ -25,13 +25,20 @@ Changing the shared output rate can briefly interrupt playback. Exclusive mode
 and ASIO are outside the shared Windows mixer. The output device and driver
 determine which shared rates are available. This build is unsigned.
 
+Settings > Rate detection has an optional Follow source bit depth checkbox.
+It uses 16-, 24-, or 32-bit integer PCM observed from the selected app. When
+precision is unknown or the checkbox is off, the app keeps the current depth.
+Settings > Output capabilities shows the highest detected rate at each depth
+for your selected output. The maximum is a capability, not a playback target.
+
 One left click on the tray icon reopens the app. Closing the window hides it.
 Right-click the tray icon and choose Exit to stop the controller. Settings are
 saved per Windows user. To launch hidden, use --background in your shortcut.
 
 Updates: Source Switcher checks GitHub once at startup. Open Settings >
 Updates to check again or install an available update. The app restarts
-after installation. Use a dedicated folder containing the extracted app.
+after installation. An amber ! next to Settings marks an available update.
+Use a dedicated folder containing the extracted app.
 
 The release feed is private. Sign in through Git Credential Manager on
 a PC that has Git for Windows, using an account granted repository access.

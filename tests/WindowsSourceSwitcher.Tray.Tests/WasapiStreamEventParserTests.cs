@@ -28,6 +28,24 @@ public sealed class WasapiStreamEventParserTests
     }
 
     [Theory]
+    [InlineData(16, true, 16)]
+    [InlineData(24, true, 24)]
+    [InlineData(32, true, 32)]
+    [InlineData(32, false, null)]
+    [InlineData(20, true, null)]
+    public void OnlySupportedIntegerValidBitsAreEvidence(int validBits, bool integer, int? expected)
+    {
+        var values = Initialization();
+        values["ValidBitsPerSample"] = validBits;
+        values["SubFormat"] = Guid.Parse(integer
+            ? "00000001-0000-0010-8000-00aa00389b71"
+            : "00000003-0000-0010-8000-00aa00389b71");
+        var signal = Parse(values);
+        Assert.NotNull(signal);
+        Assert.Equal(expected, signal.PcmBitsPerSample);
+    }
+
+    [Theory]
     [InlineData("AudioClientStart", 1)]
     [InlineData("AudioClientStop", 2)]
     public void StartAndStopUseClientIdentityWithoutInventingAFormat(string name, int kind)

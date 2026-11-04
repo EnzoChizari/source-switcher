@@ -193,6 +193,21 @@ public sealed class ControlsSettingsViewTests
         Assert.False(popup.Visible);
     });
 
+    [Fact]
+    public void Available_update_marks_only_settings_and_stays_visible_during_download() => OnSta(() =>
+    {
+        using var popup = new SourcePopup();
+        var buttons = Find<SidebarButton>(popup).ToArray();
+        var settings = buttons.Single(button => button.Text == "Settings");
+        Assert.False(settings.UpdateAvailable);
+        popup.SetUpdateStatus("New version", true, true, true);
+        Assert.Same(settings, Assert.Single(buttons, button => button.UpdateAvailable));
+        popup.SetUpdateStatus("Downloading", false, false, true);
+        Assert.True(settings.UpdateAvailable);
+        popup.SetUpdateStatus("Up to date", true, false, false);
+        Assert.False(settings.UpdateAvailable);
+    });
+
     private static CheckBox Hotkeys(Control view) => Find<CheckBox>(view).Single(control => control.AccessibleName == "Enable global hotkeys");
     private static Button Retry(Control view) => Find<Button>(view).Single(control => control.AccessibleName == "Retry global hotkey registration");
     private static void Click(Button button) => typeof(Button).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!

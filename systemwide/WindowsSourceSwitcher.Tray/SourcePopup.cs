@@ -18,6 +18,7 @@ internal sealed class SourcePopup : Form
     private readonly CheckBox _enabled = new MinimalCheckBox() { AutoSize = true, Text = "Enable switching", Checked = true };
     private readonly CheckBox _catalog = new MinimalCheckBox() { AutoSize = true, Text = "Use Apple Music catalog rate (estimate)" };
     private readonly CheckBox _streamDetection = new MinimalCheckBox() { AutoSize = true, Text = "Auto-detect application stream rate" };
+    private readonly CheckBox _followBits = new MinimalCheckBox() { AutoSize = true, Text = "Follow source bit depth (16, 24, 32-bit)" };
     private readonly Button _refresh = new() { AutoSize = true, Text = "Refresh / retry" };
     private readonly Button _release = new() { AutoSize = true, Text = "Release master" };
     private readonly Button _favorite = new() { AutoSize = true, Text = "Favorite master", AccessibleName = "Favorite master" };
@@ -45,6 +46,8 @@ internal sealed class SourcePopup : Form
     private bool _rendering;
     private string _rowsSignature = "";
     private string _deviceSignature = "";
+    private IReadOnlyList<AudioFormatCandidate>? _capabilityFormats;
+    private int? _capabilityChannels;
     private int _deviceSelectionIndex = -1;
     private string _rateSignature = "";
     private string? _favoriteMasterKey;
@@ -59,6 +62,7 @@ internal sealed class SourcePopup : Form
     public event Action<int?>? RateSelected;
     public event Action<bool>? SwitchingEnabledChanged;
     public event Action<bool>? CatalogChanged;
+    public event Action<bool>? FollowBitDepthChanged;
     public event Action<bool>? StreamDetectionChanged;
     public event Action<bool>? GlobalHotkeysChanged;
     public event Action<bool>? FavoriteAutoSwitchChanged;
@@ -76,8 +80,13 @@ internal sealed class SourcePopup : Form
         remove => _controls.UpdateInstallRequested -= value;
     }
 
-    internal void SetUpdateStatus(string status, bool canCheck, bool canInstall) =>
+    internal void SetUpdateStatus(string status, bool canCheck, bool canInstall, bool updateAvailable)
+    {
         _controls.SetUpdateStatus(status, canCheck, canInstall);
+        var index = _tabs.TabPages.IndexOf(_controlsTab);
+        if (index >= 0 && index < _navigationButtons.Count)
+            _navigationButtons[index].UpdateAvailable = updateAvailable;
+    }
 
     public event Action<bool>? BrowserIntegrationChanged
     {
@@ -194,7 +203,7 @@ internal sealed class SourcePopup : Form
         var sourceViewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
         sourceViewport.Controls.Add(layout);
         _sourcesTab.Controls.Add(sourceViewport);
-        _controls.SetDetectionControls(_streamDetection, _catalog);
+        _controls.SetDetectionControls(_streamDetection, _catalog, _followBits);
         _mixerTab.Controls.Add(_mixer);
         _controlsTab.Controls.Add(_controls);
         _diagnosticsTab.Controls.Add(_diagnostics);
@@ -234,6 +243,7 @@ internal sealed class SourcePopup : Form
         _enabled.CheckedChanged += (_, _) => { if (!_rendering) SwitchingEnabledChanged?.Invoke(_enabled.Checked); };
         _catalog.CheckedChanged += (_, _) => { if (!_rendering) CatalogChanged?.Invoke(_catalog.Checked); };
         _streamDetection.CheckedChanged += (_, _) => { if (!_rendering) StreamDetectionChanged?.Invoke(_streamDetection.Checked); };
+        _followBits.CheckedChanged += (_, _) => { if (!_rendering) FollowBitDepthChanged?.Invoke(_followBits.Checked); };
         _refresh.Click += (_, _) => RetryRequested?.Invoke();
         _release.Click += (_, _) => ReleaseRequested?.Invoke();
         _favorite.Click += (_, _) =>
@@ -437,6 +447,16 @@ internal sealed class SourcePopup : Form
         try
         {
             _controls.Render(settings.GlobalHotkeysEnabled, settings.BrowserRateDetectionEnabled, settings.FavoriteAutoSwitchEnabled, settings.FullscreenAutoSwitchEnabled);
+            if (!ReferenceEquals(_capabilityFormats, formats) || _capabilityChannels != current?.Channels)
+            {
+                _capabilityFormats = formats;
+                _capabilityChannels = current?.Channels;
+                var limits = formats.Where(format => format.Channels == _capabilityChannels && format.BitDepth is 16 or 24 or 32)
+                    .GroupBy(format => format.BitDepth).OrderBy(group => group.Key)
+                    .Select(group => $"{group.Key}-bit · {FormatRate(group.Max(format => format.SampleRateHz))}");
+                var capabilities = string.Join(Environment.NewLine, limits);
+                _controls.SetOutputCapabilities(capabilities.Length > 0 ? capabilities : "No output formats observed yet.");
+            }
             var deviceSignature = string.Join("|", devices.Select(d => $"{d.Id}:{d.FriendlyName}:{d.IsDefault}")) + settings.TargetEndpointId;
             if (_deviceSignature != deviceSignature)
             {
@@ -518,6 +538,8 @@ internal sealed class SourcePopup : Form
             _enabled.Checked = settings.SwitchingEnabled;
             _catalog.Checked = settings.CatalogRateDetectionEnabled;
             _streamDetection.Checked = settings.StreamRateDetectionEnabled;
+            _followBits.Checked = settings.FollowSourceBitDepth;
+            _followBits.Enabled = !applying;
             _devices.Enabled = _sources.Enabled = _rates.Enabled = _catalog.Enabled = _release.Enabled = !applying;
             _enabled.Enabled = _refresh.Enabled = _streamDetection.Enabled = !applying;
             _rates.Enabled &= settings.SelectedSourceKey is not null;

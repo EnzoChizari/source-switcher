@@ -222,6 +222,7 @@ internal sealed class TrayContext : ApplicationContext
         });
         _popup.SwitchingEnabledChanged += enabled => Change(() => _settings.SwitchingEnabled = enabled);
         _popup.CatalogChanged += enabled => Change(() => { _settings.CatalogRateDetectionEnabled = enabled; InvalidateObservation(); });
+        _popup.FollowBitDepthChanged += enabled => Change(() => _settings.FollowSourceBitDepth = enabled);
         _popup.StreamDetectionChanged += enabled => Change(() =>
         {
             _settings.StreamRateDetectionEnabled = enabled;
@@ -342,7 +343,8 @@ internal sealed class TrayContext : ApplicationContext
     {
         if (_exiting || _updateBusy || (install && _availableUpdate is null)) return;
         _updateBusy = true;
-        _popup.SetUpdateStatus(install ? "Downloading and verifying the update…" : "Checking GitHub…", false, false);
+        _popup.SetUpdateStatus(install ? "Downloading and verifying the update…" : "Checking GitHub…", false, false,
+            _availableUpdate is not null);
         string status;
         try
         {
@@ -374,7 +376,11 @@ internal sealed class TrayContext : ApplicationContext
             : "Could not check GitHub. Check your connection and private repository access."; }
         finally { _updateBusy = false; }
 
-        if (!_exiting) _popup.SetUpdateStatus(status, true, _availableUpdate is not null);
+        if (!_exiting)
+        {
+            var available = _availableUpdate is not null;
+            _popup.SetUpdateStatus(status, true, available, available);
+        }
     }
 
     private void ShowTutorial()
@@ -1015,7 +1021,9 @@ internal sealed class TrayContext : ApplicationContext
             }
             if (snapshot.Current is null || snapshot.Mix is null) { _status = "Cannot read the output format. Refresh to retry."; return; }
 
-            if (snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired)
+            var sourceBits = decision.DesiredBitsPerSample;
+            if (snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
+                && (sourceBits is null || snapshot.Current.BitDepth == sourceBits))
             {
                 _failedKey = _candidateKey = null;
                 await RememberAsync(desired);
@@ -1024,13 +1032,25 @@ internal sealed class TrayContext : ApplicationContext
 
             var target = EndpointFormatPolicy.SelectExact(
                 new(snapshot.Current.SampleRateHz, snapshot.Current.BitDepth, snapshot.Current.Channels),
-                snapshot.Formats.Select(f => new EndpointFormat(f.SampleRateHz, f.BitDepth, f.Channels)), desired);
+                snapshot.Formats.Select(f => new EndpointFormat(f.SampleRateHz, f.BitDepth, f.Channels)), desired, sourceBits);
             if (target is null)
             {
-                _status = $"{SourcePopup.FormatRate(desired)} is unsupported at the current bit depth/channel count. Output unchanged.";
+                _status = $"{SourcePopup.FormatRate(desired)} is unavailable for the selected output format. Output unchanged.";
                 return;
             }
-            var key = $"{endpointId}|{_settings.SelectedSourceKey}|{desired}|{snapshot.Current.BitDepth}|{snapshot.Current.Channels}|{_settings.SelectionRevision}";
+            var formatLabel = sourceBits is null ? SourcePopup.FormatRate(desired)
+                : $"{SourcePopup.FormatRate(desired)} at {target.BitsPerSample}-bit";
+            var depthFallback = sourceBits is { } bits && bits != target.BitsPerSample
+                ? $" Source submits {bits}-bit PCM; the output supports {target.BitsPerSample}-bit at this rate." : "";
+            if (snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
+                && snapshot.Current.BitDepth == target.BitsPerSample)
+            {
+                _status += depthFallback;
+                _failedKey = _candidateKey = null;
+                await RememberAsync(desired);
+                return;
+            }
+            var key = $"{endpointId}|{_settings.SelectedSourceKey}|{desired}|{sourceBits}|{target.BitsPerSample}|{snapshot.Current.BitDepth}|{snapshot.Current.Channels}|{_settings.SelectionRevision}";
             var appleSource = snapshot.Sources.FirstOrDefault(s => s.Identity == selectedKey && s.SupportsAutomaticRate);
             if (_failedKey == key) { _status = _appleSwitchFailureKey == key ? _appleSwitchDetail : "Switch failed. Check exclusive playback / device availability, then Refresh / retry. See switcher.log for details."; return; }
             if (_candidateKey != key)
@@ -1070,7 +1090,7 @@ internal sealed class TrayContext : ApplicationContext
             _applying = true;
             var formatOperation = ++_formatOperationGeneration;
             RecordSessionContinuity(_sessionContinuity.Cancel());
-            _status = $"Applying {SourcePopup.FormatRate(desired)}… Apps may briefly restart their shared streams.";
+            _status = $"Applying {formatLabel}… Apps may briefly restart their shared streams.";
             if (appleSource is not null) _status = "Checking Apple Music's live stream and confirming playback after switching…";
             Render();
             AppleSwitchResult? appleSwitch = null;
@@ -1092,7 +1112,7 @@ internal sealed class TrayContext : ApplicationContext
                     && (selectedKey is null || catalogSession is null
                         || _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) != true)) return null;
                 if (appleSource is null)
-                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired);
+                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits);
 
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_appleSwitchLifetime.Token);
                 deadline.CancelAfter(TimeSpan.FromSeconds(9));
@@ -1114,7 +1134,7 @@ internal sealed class TrayContext : ApplicationContext
                     if (decision.Reason == RateDecisionReason.WasapiStream && _streamMonitor?.IsEvidenceCurrent(observedStreamVersion) != true) return null;
                     if (decision.Reason == RateDecisionReason.CatalogMetadata && (selectedKey is null || catalogSession is null
                         || _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) != true)) return null;
-                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired);
+                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits);
                 }
                 using (session as IDisposable)
                     appleSwitch = await new AppleMusicSwitchGuard().RunAsync(session, ContextCurrent, () => live.Active,
@@ -1163,7 +1183,7 @@ internal sealed class TrayContext : ApplicationContext
             Log(_endpoint.GetLastApplyDiagnostics(endpointId) ?? "No device write diagnostics.");
             _failedKey = result.Success ? null : key;
             _appleSwitchFailureKey = null;
-            _status = result.Success ? $"Applied {SourcePopup.FormatRate(desired)}. Other shared-mode apps use Windows resampling." : "Switch failed: " + result.Detail;
+            _status = result.Success ? $"Applied {formatLabel}. Other shared-mode apps use Windows resampling.{depthFallback}" : "Switch failed: " + result.Detail;
             if (result.Success && appleSwitch is { PlaybackObserved: false })
                 _status = $"Applied {SourcePopup.FormatRate(desired)}. " + appleSwitch.Detail;
             // Our own format write emits endpoint property notifications and can advance
@@ -1564,7 +1584,8 @@ internal sealed class TrayContext : ApplicationContext
             if (source.Identity == _settings.SelectedSourceKey) _streamDetail = result.Detail;
             if (result.SampleRateHz is { } rate)
                 current[source.Identity] = new(source.Identity, source.SessionToken, _settings.SelectionRevision,
-                    rate, RateProvenance.WasapiStream, "Windows ETW observed the application's submitted shared PCM format. Original media may differ.");
+                    rate, RateProvenance.WasapiStream, "Windows ETW observed the application's submitted shared PCM format. Original media may differ.",
+                    result.PcmBitsPerSample);
         }
         _streamObservations = current;
     }
@@ -1709,7 +1730,12 @@ internal sealed class TrayContext : ApplicationContext
             new("Target / evidence", target),
             new("Confidence", confidence),
             new("Original media", _browserObservation?.SampleRateHz is { } decoded ? SourcePopup.FormatRate(decoded) + " chosen tab decoder; app routing unverified" : "Unknown; submitted PCM does not establish content rate"),
-            new("Submitted PCM", streamRate is { } rate ? SourcePopup.FormatRate(rate) : "Not observed"),
+            new("Submitted PCM", streamRate is { } rate
+                ? SourcePopup.FormatRate(rate) + (stream?.PcmBitsPerSample is { } bits ? $" · {bits}-bit integer" : "")
+                : "Not observed"),
+            new("Follow bit depth", _settings.FollowSourceBitDepth
+                ? _lastDecision?.DesiredBitsPerSample is { } wantedBits ? $"On · {wantedBits}-bit source" : "On · waiting for integer PCM evidence"
+                : "Off · keep output depth"),
             new("Windows mix", Format(_snapshot.Mix)),
             new("Endpoint format", Format(_snapshot.Current)),
             new("Post-switch session", _sessionContinuity.Detail),

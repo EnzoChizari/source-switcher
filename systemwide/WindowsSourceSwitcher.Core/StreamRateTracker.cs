@@ -8,9 +8,10 @@ public sealed record AudioStreamFormat(
     Guid ClientId,
     string EndpointId,
     int SampleRateHz,
-    DateTimeOffset ObservedAtUtc);
+    DateTimeOffset ObservedAtUtc,
+    int? PcmBitsPerSample = null);
 
-public sealed record StreamRateResult(int? SampleRateHz, string Detail);
+public sealed record StreamRateResult(int? SampleRateHz, string Detail, int? PcmBitsPerSample = null);
 
 /// <summary>
 /// Tracks observed render-client formats, not the format of the encoded media.
@@ -82,19 +83,20 @@ public sealed class StreamRateTracker
             .Where(process => process.ProcessId > 0 && process.StartedAtUtc != default)
             .Select(process => (process.ProcessId, process.StartedAtUtc))
             .ToHashSet();
-        var rates = _streams.Values
+        var formats = _streams.Values
             .Where(stream => stream.IsPlaying
                 && string.Equals(stream.Format.EndpointId, endpointId, StringComparison.OrdinalIgnoreCase)
                 && processIdentities.Contains((stream.Format.ProcessId, stream.Format.ProcessStartedAtUtc)))
-            .Select(stream => stream.Format.SampleRateHz)
+            .Select(stream => (stream.Format.SampleRateHz, stream.Format.PcmBitsPerSample))
             .Distinct()
-            .Take(2)
             .ToArray();
+        var rates = formats.Select(format => format.SampleRateHz).Distinct().Take(2).ToArray();
 
         return rates.Length switch
         {
             0 => new(null, "No playing stream with an observed format for this source and output."),
-            1 => new(rates[0], "Observed playing Windows audio-client stream rate."),
+            1 => new(rates[0], "Observed playing Windows audio-client stream rate.",
+                formats.Length == 1 ? formats[0].PcmBitsPerSample : null),
             _ => new(null, "Playing streams use conflicting rates; retaining the current output rate.")
         };
     }

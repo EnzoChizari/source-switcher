@@ -6,7 +6,11 @@ namespace WindowsSourceSwitcher.Tray.Audio;
 internal sealed record AudioServiceStreamState(
     int EmitterProcessId, int SourceProcessId, uint StreamId, string SessionInstanceId,
     string EndpointId, int SampleRateHz, int NumberOfChannels, int ValidBitsPerSample,
-    Guid SubFormat, uint StreamFlags, bool IsRunning, DateTimeOffset TimestampUtc);
+    Guid SubFormat, uint StreamFlags, bool IsRunning, DateTimeOffset TimestampUtc)
+{
+    public int? PcmBitsPerSample => SubFormat == AudioServiceStreamEventParser.Pcm && ValidBitsPerSample is 16 or 24 or 32
+        ? ValidBitsPerSample : null;
+}
 
 /// <summary>
 /// Parses only the Audio Service stream-state schema observed in a live Windows 11
@@ -18,7 +22,7 @@ internal sealed record AudioServiceStreamState(
 internal static class AudioServiceStreamEventParser
 {
     public static readonly Guid ProviderId = new("3d2b6366-47a4-5e10-6974-e5f7de0d3f28");
-    private static readonly Guid Pcm = new("00000001-0000-0010-8000-00aa00389b71");
+    internal static readonly Guid Pcm = new("00000001-0000-0010-8000-00aa00389b71");
     private static readonly Guid Float = new("00000003-0000-0010-8000-00aa00389b71");
 
     public static AudioServiceStreamState? Parse(Guid provider, string eventName,

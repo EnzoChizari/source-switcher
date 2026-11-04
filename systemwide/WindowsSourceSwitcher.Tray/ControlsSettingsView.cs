@@ -39,6 +39,7 @@ internal sealed class ControlsSettingsView : UserControl
     private readonly CheckBox _browserEnabled = new MinimalCheckBox() { AutoSize = true, Text = "Enable Helium tab integration" };
     private readonly Button _registerBrowser = new() { AutoSize = true, Text = "Register browser helper" };
     private readonly Label _browserStatus = new() { AutoSize = true, MaximumSize = new Size(414, 0) };
+    private readonly Label _outputCapabilities = new() { AutoSize = true, MaximumSize = new Size(414, 0) };
     private readonly Label _updateStatus = new() { AutoSize = true, MaximumSize = new Size(414, 0), Text = "Ready to check for updates." };
     private readonly Button _checkUpdate = new() { AutoSize = true, Text = "Check for updates" };
     private readonly Button _installUpdate = new() { AutoSize = true, Text = "Update", Enabled = false };
@@ -99,10 +100,15 @@ internal sealed class ControlsSettingsView : UserControl
         // The actual preference controls are supplied by SourcePopup, preserving their event ownership.
         _detectionLayout = section!;
         _detectionRow = _detectionLayout.RowCount;
-        _detectionLayout.RowCount += 2;
+        _detectionLayout.RowCount += 3;
+        _detectionLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _detectionLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _detectionLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         Note("Stream rates describe PCM sent to Windows. Apple Music catalog rates are estimates; original media remains unverified.");
+        Note("Bit depth follows observed integer PCM. Unknown precision or a rate override keeps the current depth.");
+        Section("Output capabilities");
+        Add(_outputCapabilities);
+        Note("Highest probed PCM rate at each depth for the selected output and channel count. Playback follows the source format within these limits.");
         Section("Keyboard shortcuts");
         Add(_hotkeysEnabled);
         Note("Shortcuts work while the window is hidden.");
@@ -141,10 +147,11 @@ internal sealed class ControlsSettingsView : UserControl
         _browserEnabled.CheckedChanged += (_, _) => { if (!_rendering) BrowserIntegrationChanged?.Invoke(_browserEnabled.Checked); };
         _registerBrowser.Click += (_, _) => BrowserRegistrationRequested?.Invoke();
     }
-    public void SetDetectionControls(CheckBox streamDetection, CheckBox catalog)
+    public void SetDetectionControls(CheckBox streamDetection, CheckBox catalog, CheckBox followBits)
     {
         _detectionLayout.Controls.Add(streamDetection, 0, _detectionRow);
         _detectionLayout.Controls.Add(catalog, 0, _detectionRow + 1);
+        _detectionLayout.Controls.Add(followBits, 0, _detectionRow + 2);
     }
     public void Render(bool hotkeysEnabled, bool browserEnabled = false, bool favoriteAutoSwitchEnabled = false, bool fullscreenAutoSwitchEnabled = false)
     {
@@ -166,6 +173,7 @@ internal sealed class ControlsSettingsView : UserControl
         _installUpdate.Enabled = canInstall;
     }
     public void SetHotkeyStatus(string status) => _hotkeyStatus.Text = status;
+    public void SetOutputCapabilities(string capabilities) => _outputCapabilities.Text = capabilities;
     public void SetBrowserStatus(string status) => _browserStatus.Text = status;
     public void SetFavoriteAutoSwitchStatus(string status) => _autoFavoriteStatus.Text = status;
     public void SetFullscreenStatus(string status) => _fullscreenStatus.Text = status;

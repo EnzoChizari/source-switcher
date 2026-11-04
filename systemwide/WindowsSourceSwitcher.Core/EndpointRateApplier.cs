@@ -15,10 +15,10 @@ public interface IEndpointRateAdapter
 /// <summary>Changed means a write was accepted, even if subsequent verification failed.</summary>
 public sealed record ApplyResult(bool Success, bool Changed, string Detail);
 
-/// <summary>Applies an exact rate without substituting another bit depth or channel count.</summary>
+/// <summary>Applies the requested rate with the selected endpoint precision and original channel count.</summary>
 public static class EndpointRateApplier
 {
-    public static ApplyResult Apply(IEndpointRateAdapter adapter, string endpointId, int desiredHz)
+    public static ApplyResult Apply(IEndpointRateAdapter adapter, string endpointId, int desiredHz, int? sourceBitsPerSample = null)
     {
         var changed = false;
         try
@@ -33,13 +33,18 @@ public static class EndpointRateApplier
                 return new(false, false, "Cannot read the endpoint device format; no change was attempted.");
 
             var mix = adapter.ReadMixFormat(endpointId);
-            if (current.SampleRateHz == desiredHz && mix?.SampleRateHz == desiredHz)
+            if (current.SampleRateHz == desiredHz && mix?.SampleRateHz == desiredHz
+                && (sourceBitsPerSample is null || current.BitsPerSample == sourceBitsPerSample))
                 return new(true, false, $"Endpoint device and shared mix already use {desiredHz} Hz.");
 
-            var selected = EndpointFormatPolicy.SelectExact(current, adapter.ReadSupportedFormats(endpointId), desiredHz);
+            var selected = EndpointFormatPolicy.SelectExact(current, adapter.ReadSupportedFormats(endpointId), desiredHz, sourceBitsPerSample);
             if (selected is null)
-                return new(false, false,
-                    $"Endpoint does not advertise {desiredHz} Hz at its current {current.BitsPerSample}-bit, {current.Channels}-channel format; no change was attempted.");
+                return new(false, false, sourceBitsPerSample is null
+                    ? $"Endpoint does not advertise {desiredHz} Hz at its current {current.BitsPerSample}-bit, {current.Channels}-channel format; no change was attempted."
+                    : $"Endpoint does not advertise {desiredHz} Hz in 16-, 24-, or 32-bit PCM with {current.Channels} channels.");
+
+            if (selected == current && mix?.SampleRateHz == desiredHz)
+                return new(true, false, $"The endpoint already uses the supported format {Describe(current)}.");
 
             if (!adapter.TryApply(endpointId, selected, out var failure))
                 return new(false, false, string.IsNullOrWhiteSpace(failure)

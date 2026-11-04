@@ -21,7 +21,8 @@ public sealed record RateObservation(
     long SelectionRevision,
     int? SampleRateHz,
     RateProvenance Provenance,
-    string Detail);
+    string Detail,
+    int? PcmBitsPerSample = null);
 
 public enum RateDecisionReason
 {
@@ -39,7 +40,8 @@ public enum RateDecisionReason
     BrowserHold
 }
 
-public sealed record RateDecision(int? DesiredSampleRateHz, RateDecisionReason Reason, string Detail);
+public sealed record RateDecision(int? DesiredSampleRateHz, RateDecisionReason Reason, string Detail,
+    int? DesiredBitsPerSample = null);
 
 /// <summary>Pure selection policy: endpoint calls and remembering successful changes belong to the host.</summary>
 public static class SampleRatePolicy
@@ -116,13 +118,18 @@ public static class SampleRatePolicy
             };
         }
 
-        var streamRates = settings.StreamRateDetectionEnabled
+        var streams = settings.StreamRateDetectionEnabled
             ? eligibleObservations.Where(observation => observation.Provenance == RateProvenance.WasapiStream)
-                .Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray()
+                .ToArray()
+            : [];
+        var streamRates = streams.Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray();
+        var streamBits = settings.FollowSourceBitDepth
+            ? streams.Select(observation => observation.PcmBitsPerSample).Distinct().Take(2).ToArray()
             : [];
         if (streamRates.Length > 0)
             return streamRates.Length == 1
-                ? new(streamRates[0], RateDecisionReason.WasapiStream, "Following the selected app's observed WASAPI PCM stream rate; the app may have resampled its original media.")
+                ? new(streamRates[0], RateDecisionReason.WasapiStream, "Following the selected app's observed WASAPI PCM stream rate; the app may have resampled its original media.",
+                    streamBits is [16 or 24 or 32] ? streamBits[0] : null)
                 : new(held, RateDecisionReason.ConflictingObservations, "Selected app has different simultaneous stream rates; retaining its last confirmed rate.");
 
         var catalogRates = settings.CatalogRateDetectionEnabled

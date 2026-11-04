@@ -12,7 +12,8 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
     // 705.6/768 kHz ceiling of current XMOS/Thesycon and C-Media DACs (e.g. FiiO KA3/KA5/K17/
     // K5 Pro). Rates absent from this list are never queried, so a DAC's top rates would
     // otherwise go undetected.
-    private static readonly int[] CandidateRates = [44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000, 705600, 768000];
+    private static readonly int[] CandidateRates =
+        [8000, 11025, 16000, 22050, 24000, 32000, 44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000, 705600, 768000];
 
     // Bit depths probed for each sample rate. 32-bit is included because some DACs advertise
     // 32-bit float shared-mode support even when 24-bit is the effective hardware depth.

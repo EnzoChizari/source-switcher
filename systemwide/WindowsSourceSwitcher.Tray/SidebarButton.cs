@@ -2,10 +2,21 @@ namespace WindowsSourceSwitcher.Tray;
 
 internal sealed class SidebarButton : Button
 {
-    private bool _selected, _compact;
+    private bool _selected, _compact, _updateAvailable;
     public int Section { get; init; }
     public bool Selected { get => _selected; set { if (_selected == value) return; _selected = value; Invalidate(); } }
     public bool Compact { get => _compact; set { if (_compact == value) return; _compact = value; Invalidate(); } }
+    public bool UpdateAvailable
+    {
+        get => _updateAvailable;
+        set
+        {
+            if (_updateAvailable == value) return;
+            _updateAvailable = value;
+            AccessibleDescription = value ? "Open Settings. An update is available." : "Open this audio control section.";
+            Invalidate();
+        }
+    }
     public SidebarButton()
     {
         FlatStyle = FlatStyle.Flat;
@@ -49,8 +60,20 @@ internal sealed class SidebarButton : Button
             for (var row = 0; row < 3; row++) args.Graphics.DrawLine(pen, x, y + Px(3 + row * 5), x + Px(15), y + Px(3 + row * 5));
         }
         if (!Compact) TextRenderer.DrawText(args.Graphics, Text, Font,
-            new Rectangle(Px(44), 0, Math.Max(1, Width - Px(48)), Height), foreground,
+            new Rectangle(Px(44), 0, Math.Max(1, Width - Px(UpdateAvailable ? 70 : 48)), Height), foreground,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        if (UpdateAvailable)
+        {
+            var size = Px(14);
+            var badge = new Rectangle(Width - size - Px(5), Compact ? Px(4) : (Height - size) / 2, size, size);
+            using var fill = new SolidBrush(MinimalDarkTheme.Accent);
+            var smoothing = args.Graphics.SmoothingMode;
+            args.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            args.Graphics.FillEllipse(fill, badge);
+            args.Graphics.SmoothingMode = smoothing;
+            TextRenderer.DrawText(args.Graphics, "!", Font, badge, Color.Black,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        }
         if (Selected)
         {
             using var accent = new SolidBrush(MinimalDarkTheme.Accent);
