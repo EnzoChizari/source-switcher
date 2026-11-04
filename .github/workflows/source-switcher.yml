@@ -1,0 +1,54 @@
+name: Source Switcher Windows release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-switcher-windows-release
+  queue: max
+
+jobs:
+  release:
+    if: github.repository == 'EnzoChizari/source-switcher' && github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Run Windows tests
+        run: |
+          dotnet test tests/WindowsSourceSwitcher.Core.Tests -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet test tests/WindowsSourceSwitcher.Tray.Tests -c Release --nologo
+          exit $LASTEXITCODE
+      - name: Run Helium extension tests
+        run: node --test (Get-ChildItem browser/chromium/*.test.mjs).FullName
+      - name: Build self-contained Windows x64 package
+        run: |
+          $project = [xml](Get-Content systemwide/WindowsSourceSwitcher.Tray/WindowsSourceSwitcher.Tray.csproj -Raw)
+          $version = $project.Project.PropertyGroup.Version
+          $packageDirectory = Join-Path $env:RUNNER_TEMP 'source-switcher-release'
+          New-Item -ItemType Directory -Path $packageDirectory | Out-Null
+          $portableDirectory = Join-Path $packageDirectory "SourceSwitcher-$version-win-x64"
+          ./tools/Publish-Systemwide.ps1 -FriendDistribution -IncludeHelium -OutputDirectory $portableDirectory
+          "PACKAGE_DIRECTORY=$packageDirectory" >> $env:GITHUB_ENV
+          "PORTABLE_DIRECTORY=$portableDirectory" >> $env:GITHUB_ENV
+      - name: Publish verified release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./tools/Publish-PrivateRelease.ps1 -FromActions -PortableDirectory $env:PORTABLE_DIRECTORY -PackageDirectory $env:PACKAGE_DIRECTORY

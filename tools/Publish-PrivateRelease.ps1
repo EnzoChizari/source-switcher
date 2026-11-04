@@ -1,12 +1,12 @@
-# Requires PowerShell 7 and a Git Credential Manager sign-in with repository write access.
+# Requires PowerShell 7. Local publishing uses Git Credential Manager.
 param(
     [Parameter(Mandatory)][string]$PortableDirectory,
-    [Parameter(Mandatory)][string]$PackageDirectory
+    [Parameter(Mandatory)][string]$PackageDirectory,
+    [switch]$FromActions
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $slug = 'EnzoChizari/source-switcher'
-$remote = "https://github.com/$slug.git"
 $api = "https://api.github.com/repos/$slug"
 $project = Join-Path $repo 'systemwide/WindowsSourceSwitcher.Tray/WindowsSourceSwitcher.Tray.csproj'
 $version = ([xml](Get-Content -LiteralPath $project -Raw)).Project.PropertyGroup.Version | Where-Object { $_ }
@@ -22,18 +22,36 @@ $package = Join-Path $packageRoot 'SourceSwitcher-win-x64.zip'
 $source = Join-Path $portable 'Corresponding-source.zip'
 if ((Test-Path -LiteralPath $package) -or (Test-Path -LiteralPath $source)) { throw 'Choose a fresh package folder and portable build.' }
 
-$env:GIT_TERMINAL_PROMPT = '0'
-$env:GCM_INTERACTIVE = 'Never'
-$record = "protocol=https`nhost=github.com`npath=$slug.git`n`n" | git credential fill
-if ($LASTEXITCODE -ne 0) { throw 'Sign in to GitHub using Git Credential Manager before publishing.' }
-$token = ($record | Where-Object { $_.StartsWith('password=') }) -replace '^password=', ''
+if ($FromActions) {
+    if ($env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_REPOSITORY -cne $slug -or $env:GITHUB_REF -cne 'refs/heads/main') {
+        throw 'Automatic publishing is restricted to the private repository main branch.'
+    }
+    $token = $env:GITHUB_TOKEN
+    $commit = $env:GITHUB_SHA
+} else {
+    $env:GIT_TERMINAL_PROMPT = '0'
+    $env:GCM_INTERACTIVE = 'Never'
+    $record = "protocol=https`nhost=github.com`npath=$slug.git`n`n" | git credential fill
+    if ($LASTEXITCODE -ne 0) { throw 'Sign in to GitHub using Git Credential Manager before publishing.' }
+    $token = ($record | Where-Object { $_.StartsWith('password=') }) -replace '^password=', ''
+}
 if (!$token) { throw 'GitHub credentials are unavailable.' }
 $headers = @{ Authorization = "Bearer $token"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
 $repository = Invoke-RestMethod $api -Headers $headers -TimeoutSec 30
 if (!$repository.private -or $repository.full_name -cne $slug) { throw 'The intended repository is unavailable or is no longer private.' }
-$ref = git -C $repo ls-remote $remote refs/heads/main
-if ($LASTEXITCODE -ne 0 -or !$ref) { throw 'Push the release source to the private main branch first.' }
-$commit = ($ref -split '\s+')[0]
+if (!$FromActions) {
+    $commit = (Invoke-RestMethod "$api/git/ref/heads/main" -Headers $headers -TimeoutSec 30).object.sha
+}
+if ($commit -cnotmatch '^[0-9a-f]{40}$') { throw 'Missing GitHub source commit.' }
+$tag = "v$version"
+$latest = Invoke-RestMethod "$api/releases/latest" -Headers $headers -TimeoutSec 30
+if ($latest.tag_name -ceq $tag) {
+    Write-Output "$tag is already published. Source changes are on GitHub."
+    return
+}
+if ($latest.tag_name -cnotmatch '^v\d+\.\d+\.\d+$' -or [version]$version -le [version]$latest.tag_name.Substring(1)) {
+    throw "The release version must be newer than $($latest.tag_name)."
+}
 $paths = @(git -C $repo ls-tree -r --name-only $commit)
 if ($LASTEXITCODE -ne 0) { throw 'The published commit is missing locally.' }
 $changed = @(git -C $repo diff --name-only $commit -- $paths)
@@ -47,13 +65,27 @@ try {
     Remove-Item -LiteralPath $source
 }
 $digest = 'sha256:' + (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLowerInvariant()
-$tag = "v$version"
 $draft = @{ tag_name = $tag; target_commitish = $commit; name = "Source Switcher $tag"; draft = $true;
     prerelease = $false; body = "Windows x64 portable release. Download SourceSwitcher-win-x64.zip and extract the entire folder. See START HERE.txt for private update access." }
-$release = Invoke-RestMethod "$api/releases" -Method Post -Headers $headers -ContentType 'application/json' -Body ($draft | ConvertTo-Json) -TimeoutSec 30
+$releases = Invoke-RestMethod "$api/releases?per_page=100" -Headers $headers -TimeoutSec 30
+$release = $releases | Where-Object { $_.tag_name -ceq $tag } | Select-Object -First 1
+if ($release) {
+    if (!$release.draft -or $release.target_commitish -cne $commit) {
+        throw "An existing $tag release belongs to a different build. Review it before publishing."
+    }
+} else {
+    $release = Invoke-RestMethod "$api/releases" -Method Post -Headers $headers -ContentType 'application/json' -Body ($draft | ConvertTo-Json) -TimeoutSec 30
+}
 $assetName = 'SourceSwitcher-win-x64.zip'
-$upload = "https://uploads.github.com/repos/$slug/releases/$($release.id)/assets?name=$assetName"
-$asset = Invoke-RestMethod $upload -Method Post -Headers $headers -InFile $package -ContentType 'application/zip' -TimeoutSec 300
+$asset = $release.assets | Where-Object { $_.name -ceq $assetName } | Select-Object -First 1
+if ($asset -and ($asset.state -ne 'uploaded' -or $asset.digest -ne $digest)) {
+    Invoke-RestMethod "$api/releases/assets/$($asset.id)" -Method Delete -Headers $headers -TimeoutSec 30
+    $asset = $null
+}
+if (!$asset) {
+    $upload = "https://uploads.github.com/repos/$slug/releases/$($release.id)/assets?name=$assetName"
+    $asset = Invoke-RestMethod $upload -Method Post -Headers $headers -InFile $package -ContentType 'application/zip' -TimeoutSec 300
+}
 if ($asset.state -ne 'uploaded' -or $asset.size -ne (Get-Item -LiteralPath $package).Length -or $asset.digest -ne $digest) {
     throw "Uploaded asset verification failed. Release $tag remains a draft."
 }

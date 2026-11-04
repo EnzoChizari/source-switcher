@@ -48,7 +48,11 @@ See [implementation report](IMPLEMENTATION_REPORT.md), [current roadmap](DEVELOP
 
 The portable Windows x64 build checks the private GitHub release feed once at launch. Controls > Updates allows another check or an explicit install. The app checks the asset size and GitHub SHA-256 digest, stages the complete bundle, then restarts from the same path. Use a dedicated folder for the extracted app. Keep Windows settings and any personal files outside that folder.
 
-Start from v1.1.0 for the updater. Use vX.Y.Z with a patch increment for fixes and a minor increment for feature releases. Set the new version in the tray project, test the app, and push the reviewed source to private main. Use a fresh build and package directory. From PowerShell 7 on Windows with the .NET SDK, run:
+Use vX.Y.Z with a patch increment for fixes and a minor increment for feature releases. Set the new version in the tray project and commit the reviewed changes. In the canonical Windows checkout, the post-commit hook uploads commits from `codex/source-switcher` to private main. If a push fails, the commit stays local. Resolve the cause and run `./tools/git-hooks/Push-PrivateMain.ps1` to retry.
+
+On each push to private main, GitHub Actions runs the core, tray, and Helium tests and builds the self-contained x64 app. When the version is newer, the workflow packages the exact tested source and publishes it to the private release feed. Changes using the current version still appear in source history. Check the workflow run for its result.
+
+For a manual release fallback, use a fresh build and package directory. From PowerShell 7 on Windows with the .NET SDK, run:
 
 ```powershell
 ./tools/Publish-Systemwide.ps1 -FriendDistribution -IncludeHelium -OutputDirectory C:/release/SourceSwitcher-1.1.0-win-x64

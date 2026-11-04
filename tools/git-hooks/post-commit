@@ -1,0 +1,2 @@
+#!/bin/sh
+exec pwsh -NoProfile -NonInteractive -File tools/git-hooks/Push-PrivateMain.ps1

@@ -8,6 +8,7 @@ docs/
 # Local scratch and verification output
 .tmp/
 .tools/
+/research/
 
 # IDE and OS files
 .vs/
