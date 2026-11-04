@@ -34,11 +34,6 @@ if (!$repository.private -or $repository.full_name -cne $slug) { throw 'The inte
 $ref = git -C $repo ls-remote $remote refs/heads/main
 if ($LASTEXITCODE -ne 0 -or !$ref) { throw 'Push the release source to the private main branch first.' }
 $commit = ($ref -split '\s+')[0]
-$projectRelative = $project.Substring($repo.Length + 1).Replace('\','/')
-$publishedProject = git -C $repo show "${commit}:$projectRelative"
-if ($LASTEXITCODE -ne 0 -or ($publishedProject -join "`n") -cne (Get-Content -LiteralPath $project -Raw).TrimEnd()) {
-    throw 'The release project file differs from private main.'
-}
 $paths = @(git -C $repo ls-tree -r --name-only $commit)
 if ($LASTEXITCODE -ne 0) { throw 'The published commit is missing locally.' }
 $changed = @(git -C $repo diff --name-only $commit -- $paths)
