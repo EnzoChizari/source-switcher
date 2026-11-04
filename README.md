@@ -24,6 +24,10 @@ See the [changelog](SOURCE_SWITCHER_CHANGELOG.md) for recent updates.
 
 ## Credits
 
-We built Source Switcher around our own Windows tray workflow. Windows Lossless Switcher helped inspire the idea, and Source Switcher also uses selected components from that project. See the [license](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md) for details.
+We built Source Switcher around our own Windows tray workflow. Windows Lossless Switcher helped inspire the idea, and Source Switcher also uses selected components from that project. See the [third-party notices](THIRD_PARTY_NOTICES.md) for attribution details.
+
+## License
+
+Source Switcher is distributed under the [GNU General Public License v3.0 or later](LICENSE).
 
 **This app is 100% vibe-coded.**

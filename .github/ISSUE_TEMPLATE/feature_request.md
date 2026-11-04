@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an improvement for Windows Lossless Switcher
+about: Suggest an improvement for Source Switcher
 title: "[Feature] "
 labels: enhancement
 assignees: ""

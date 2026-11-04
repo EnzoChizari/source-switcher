@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a reproducible problem in Windows Lossless Switcher
+about: Report a reproducible problem in Source Switcher
 title: "[Bug] "
 labels: bug
 assignees: ""
