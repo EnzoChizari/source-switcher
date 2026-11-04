@@ -43,12 +43,16 @@ $private = Invoke-RestMethod $api -Headers $headers -TimeoutSec 30
 if (!$private.private -or $private.full_name -cne $slug) { throw 'GitHub did not confirm repository privacy.' }
 $release = Invoke-RestMethod "$api/releases/latest" -Headers $headers -TimeoutSec 30
 if ($release.tag_name -cne "v$Version" -or $release.draft -or $release.prerelease) { throw 'The requested version is not the latest stable release.' }
-$asset = @($release.assets | Where-Object { $_.name -ceq 'SourceSwitcher-win-x64.zip' -and $_.state -eq 'uploaded' })
+$assetName = "SourceSwitcher-v$Version-win-x64.zip"
+$asset = @($release.assets | Where-Object { $_.name -ceq $assetName -and $_.state -eq 'uploaded' })
+if ($asset.Count -eq 0) {
+    $asset = @($release.assets | Where-Object { $_.name -ceq 'SourceSwitcher-win-x64.zip' -and $_.state -eq 'uploaded' })
+}
 if ($asset.Count -ne 1 -or $asset[0].size -le 0 -or $asset[0].size -gt 512MB -or $asset[0].digest -cnotmatch '^sha256:[0-9a-f]{64}$') {
     throw 'The verified Windows package is missing.'
 }
 $asset = $asset[0]
-$zip = Join-Path $scratch.FullName 'SourceSwitcher-win-x64.zip'
+$zip = Join-Path $scratch.FullName $asset.name
 $headers.Accept = 'application/octet-stream'
 Invoke-WebRequest "$api/releases/assets/$($asset.id)" -Headers $headers -OutFile $zip -TimeoutSec 300
 $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()

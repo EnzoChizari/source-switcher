@@ -22,12 +22,28 @@ public sealed class GitHubUpdateTests
         var json = JsonSerializer.SerializeToUtf8Bytes(new
         {
             tag_name = tag, draft, prerelease, body = "Changes in this update.",
-            assets = new[] { new { name = GitHubUpdateFeed.AssetName, state = "uploaded", id = 7, size = 123, digest = "sha256:" + new string('a', 64) } }
+            assets = new[] { new { name = GitHubUpdateFeed.LegacyAssetName, state = "uploaded", id = 7, size = 123, digest = "sha256:" + new string('a', 64) } }
         });
 
         var release = GitHubUpdateFeed.ReadRelease(json, new Version(1, 0, 9, 0));
         Assert.Equal(expected, release is not null);
         if (expected) Assert.Equal("Changes in this update.", release!.Notes);
+    }
+
+    [Fact]
+    public void PrefersTheVersionedPackageOverTheCompatibilityCopy()
+    {
+        var json = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            tag_name = "v1.3.1", draft = false, prerelease = false,
+            assets = new[]
+            {
+                new { name = GitHubUpdateFeed.LegacyAssetName, state = "uploaded", id = 7, size = 123, digest = "sha256:" + new string('a', 64) },
+                new { name = "SourceSwitcher-v1.3.1-win-x64.zip", state = "uploaded", id = 8, size = 123, digest = "sha256:" + new string('a', 64) }
+            }
+        });
+        var release = GitHubUpdateFeed.ReadRelease(json, new Version(1, 3, 0));
+        Assert.Equal(8, release?.AssetId);
     }
 
     [Theory]

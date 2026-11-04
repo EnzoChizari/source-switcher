@@ -52,6 +52,8 @@ Use vX.Y.Z with a patch increment for fixes and a minor increment for feature re
 
 On each push to private main, GitHub Actions runs the core, tray, and Helium tests and builds the self-contained x64 app. When the version is newer, the workflow packages the exact tested source and publishes it to the private release feed. Changes using the current version still appear in source history. Check the workflow run for its result.
 
+The download is named `SourceSwitcher-vX.Y.Z-win-x64.zip`. Update to v1.3.1 to migrate from the legacy filename. That release also carries an identical compatibility download for older app builds.
+
 For a manual release fallback, use a fresh build and package directory. From PowerShell 7 on Windows with the .NET SDK, run:
 
 ```powershell

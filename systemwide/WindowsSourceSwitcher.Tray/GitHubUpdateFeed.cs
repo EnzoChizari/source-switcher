@@ -13,7 +13,7 @@ internal sealed class GitHubUpdateFeed(HttpClient http)
 {
     internal const string Repository = "EnzoChizari/source-switcher";
     internal const string CredentialTarget = "SourceSwitcher:GitHub:" + Repository;
-    internal const string AssetName = "SourceSwitcher-win-x64.zip";
+    internal const string LegacyAssetName = "SourceSwitcher-win-x64.zip";
     internal const long MaximumPackageBytes = 512L * 1024 * 1024;
     private const string Api = "https://api.github.com/repos/" + Repository + "/releases/";
 
@@ -39,9 +39,12 @@ internal sealed class GitHubUpdateFeed(HttpClient http)
         if (tag is null || !tag.StartsWith('v') || !Version.TryParse(tag[1..], out var version)
             || version.Build < 0 || version.Revision >= 0 || version.ToString(3) != tag[1..]
             || version <= new Version(installed.Major, installed.Minor, Math.Max(0, installed.Build))) return null;
-        foreach (var asset in release.GetProperty("assets").EnumerateArray())
+        var versionedName = $"SourceSwitcher-v{version.ToString(3)}-win-x64.zip";
+        foreach (var asset in release.GetProperty("assets").EnumerateArray()
+            .OrderByDescending(asset => asset.GetProperty("name").GetString() == versionedName))
         {
-            if (asset.GetProperty("name").GetString() != AssetName || asset.GetProperty("state").GetString() != "uploaded") continue;
+            var name = asset.GetProperty("name").GetString();
+            if ((name != versionedName && name != LegacyAssetName) || asset.GetProperty("state").GetString() != "uploaded") continue;
             var digest = asset.GetProperty("digest").GetString();
             var id = asset.GetProperty("id").GetInt64();
             var size = asset.GetProperty("size").GetInt64();

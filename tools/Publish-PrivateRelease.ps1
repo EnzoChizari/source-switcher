@@ -18,7 +18,8 @@ if ([IO.Path]::GetFileName($portable) -cne $prefix -or
     (Get-Content -LiteralPath (Join-Path $portable 'source-switcher-portable.txt') -Raw) -cne $version) {
     throw "Use the complete friend distribution in a folder named $prefix."
 }
-$package = Join-Path $packageRoot 'SourceSwitcher-win-x64.zip'
+$packageName = "SourceSwitcher-v$version-win-x64.zip"
+$package = Join-Path $packageRoot $packageName
 $source = Join-Path $portable 'Corresponding-source.zip'
 if ((Test-Path -LiteralPath $package) -or (Test-Path -LiteralPath $source)) { throw 'Choose a fresh package folder and portable build.' }
 
@@ -80,22 +81,28 @@ if ($release) {
 } else {
     $release = Invoke-RestMethod "$api/releases" -Method Post -Headers $headers -ContentType 'application/json' -Body ($draft | ConvertTo-Json) -TimeoutSec 30
 }
-$assetName = 'SourceSwitcher-win-x64.zip'
-$asset = $release.assets | Where-Object { $_.name -ceq $assetName } | Select-Object -First 1
-if ($asset -and ($asset.state -ne 'uploaded' -or $asset.digest -ne $digest)) {
-    Invoke-RestMethod "$api/releases/assets/$($asset.id)" -Method Delete -Headers $headers -TimeoutSec 30
-    $asset = $null
-}
-if (!$asset) {
-    $upload = "https://uploads.github.com/repos/$slug/releases/$($release.id)/assets?name=$assetName"
-    $asset = Invoke-RestMethod $upload -Method Post -Headers $headers -InFile $package -ContentType 'application/zip' -TimeoutSec 300
-}
-if ($asset.state -ne 'uploaded' -or $asset.size -ne (Get-Item -LiteralPath $package).Length -or $asset.digest -ne $digest) {
-    throw "Uploaded asset verification failed. Release $tag remains a draft."
+$assetNames = @($packageName)
+# The transition release is discoverable by builds that know only the previous asset name.
+if ($version -ceq '1.3.1') { $assetNames += 'SourceSwitcher-win-x64.zip' }
+$packageBytes = (Get-Item -LiteralPath $package).Length
+foreach ($assetName in $assetNames) {
+    $asset = $release.assets | Where-Object { $_.name -ceq $assetName } | Select-Object -First 1
+    if ($asset -and ($asset.state -ne 'uploaded' -or $asset.digest -ne $digest)) {
+        Invoke-RestMethod "$api/releases/assets/$($asset.id)" -Method Delete -Headers $headers -TimeoutSec 30
+        $asset = $null
+    }
+    if (!$asset) {
+        $upload = "https://uploads.github.com/repos/$slug/releases/$($release.id)/assets?name=$assetName"
+        $asset = Invoke-RestMethod $upload -Method Post -Headers $headers -InFile $package -ContentType 'application/zip' -TimeoutSec 300
+    }
+    if ($asset.name -cne $assetName -or $asset.state -ne 'uploaded' -or $asset.size -ne $packageBytes -or $asset.digest -ne $digest) {
+        throw "Verification failed for $assetName. Release $tag remains a draft."
+    }
 }
 $release = Invoke-RestMethod "$api/releases/$($release.id)" -Method Patch -Headers $headers -ContentType 'application/json' -Body '{"draft":false,"make_latest":"true"}' -TimeoutSec 30
 $latest = Invoke-RestMethod "$api/releases/latest" -Headers $headers -TimeoutSec 30
-if ($latest.id -ne $release.id -or $latest.tag_name -cne $tag -or !($latest.assets | Where-Object { $_.id -eq $asset.id -and $_.digest -eq $digest })) {
+$verified = @($latest.assets | Where-Object { $_.name -cin $assetNames -and $_.digest -ceq $digest -and $_.size -eq $packageBytes })
+if ($latest.id -ne $release.id -or $latest.tag_name -cne $tag -or $verified.Count -ne $assetNames.Count) {
     throw 'GitHub did not return the verified release as latest.'
 }
 [pscustomobject]@{ Version = $tag; Commit = $commit; Release = $release.html_url; Package = $package; Digest = $digest }

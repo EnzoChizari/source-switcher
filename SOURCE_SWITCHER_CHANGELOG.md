@@ -1,5 +1,10 @@
 # Source Switcher changelog
 
+## v1.3.1
+
+- Windows x64 release ZIP filenames include the version, such as SourceSwitcher-v1.3.1-win-x64.zip.
+- This release also includes a compatibility copy so earlier builds can update in the app.
+
 ## v1.3.0
 
 ### Source controls
