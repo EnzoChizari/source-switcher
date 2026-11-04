@@ -52,6 +52,10 @@ if ($latest.tag_name -ceq $tag) {
 if ($latest.tag_name -cnotmatch '^v\d+\.\d+\.\d+$' -or [version]$version -le [version]$latest.tag_name.Substring(1)) {
     throw "The release version must be newer than $($latest.tag_name)."
 }
+$changelog = Join-Path $repo 'SOURCE_SWITCHER_CHANGELOG.md'
+$notes = [regex]::Match((Get-Content -LiteralPath $changelog -Raw),
+    "(?ms)^## $([regex]::Escape($tag))\r?\n(?<notes>.*?)(?=^## |\z)").Groups['notes'].Value.Trim()
+if (!$notes) { throw "Add release notes for $tag to SOURCE_SWITCHER_CHANGELOG.md." }
 $paths = @(git -C $repo ls-tree -r --name-only $commit)
 if ($LASTEXITCODE -ne 0) { throw 'The published commit is missing locally.' }
 $changed = @(git -C $repo diff --name-only $commit -- $paths)
@@ -66,7 +70,7 @@ try {
 }
 $digest = 'sha256:' + (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLowerInvariant()
 $draft = @{ tag_name = $tag; target_commitish = $commit; name = "Source Switcher $tag"; draft = $true;
-    prerelease = $false; body = "Windows x64 portable release. Download SourceSwitcher-win-x64.zip and extract the entire folder. See START HERE.txt for private update access." }
+    prerelease = $false; body = $notes }
 $releases = Invoke-RestMethod "$api/releases?per_page=100" -Headers $headers -TimeoutSec 30
 $release = $releases | Where-Object { $_.tag_name -ceq $tag } | Select-Object -First 1
 if ($release) {

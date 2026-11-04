@@ -21,11 +21,13 @@ public sealed class GitHubUpdateTests
     {
         var json = JsonSerializer.SerializeToUtf8Bytes(new
         {
-            tag_name = tag, draft, prerelease,
+            tag_name = tag, draft, prerelease, body = "Changes in this update.",
             assets = new[] { new { name = GitHubUpdateFeed.AssetName, state = "uploaded", id = 7, size = 123, digest = "sha256:" + new string('a', 64) } }
         });
 
-        Assert.Equal(expected, GitHubUpdateFeed.ReadRelease(json, new Version(1, 0, 9, 0)) is not null);
+        var release = GitHubUpdateFeed.ReadRelease(json, new Version(1, 0, 9, 0));
+        Assert.Equal(expected, release is not null);
+        if (expected) Assert.Equal("Changes in this update.", release!.Notes);
     }
 
     [Theory]

@@ -256,8 +256,17 @@ public sealed class BrowserRateBridgeTests
     private static async Task<NamedPipeClientStream> Connect(string name)
     {
         var client = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
-        await client.ConnectAsync(3000);
-        return client;
+        try
+        {
+            // Hosted Windows runners can delay the listener when tests are running in parallel.
+            await client.ConnectAsync(10_000);
+            return client;
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
     }
     private static async Task<BrowserProbeRequest> Request(Stream stream)
     {

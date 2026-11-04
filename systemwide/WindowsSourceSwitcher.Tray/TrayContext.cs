@@ -334,7 +334,13 @@ internal sealed class TrayContext : ApplicationContext
         if (!diagnosticsMode && PortableUpdateInstaller.CanInstall)
         {
             _popup.UpdateCheckRequested += async () => await RunUpdateAsync();
-            _popup.UpdateInstallRequested += async () => await RunUpdateAsync(install: true);
+            _popup.UpdateInstallRequested += async () =>
+            {
+                if (_exiting || _updateBusy || _availableUpdate is not { } release) return;
+                using var changelog = new UpdateChangelogDialog(release);
+                if (changelog.ShowDialog(_popup) == DialogResult.OK && _availableUpdate == release)
+                    await RunUpdateAsync(install: true);
+            };
             _popup.BeginInvoke(new Action(async () => await RunUpdateAsync(startup: true)));
         }
     }

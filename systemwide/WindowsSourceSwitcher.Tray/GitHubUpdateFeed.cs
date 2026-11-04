@@ -7,7 +7,7 @@ using System.Text.Json;
 
 namespace WindowsSourceSwitcher.Tray;
 
-internal sealed record PortableRelease(Version Version, long AssetId, long Bytes, string Sha256);
+internal sealed record PortableRelease(Version Version, long AssetId, long Bytes, string Sha256, string? Notes = null);
 
 internal sealed class GitHubUpdateFeed(HttpClient http)
 {
@@ -48,7 +48,12 @@ internal sealed class GitHubUpdateFeed(HttpClient http)
             if (id > 0 && size is > 0 and <= MaximumPackageBytes
                 && digest is { Length: 71 } && digest.StartsWith("sha256:", StringComparison.Ordinal)
                 && digest[7..].All(Uri.IsHexDigit))
-                return new PortableRelease(version, id, size, digest[7..]);
+            {
+                var notes = release.TryGetProperty("body", out var body) && body.ValueKind == JsonValueKind.String
+                    ? body.GetString()?.Trim() : null;
+                if (notes is { Length: > 8000 }) notes = notes[..8000] + "\n…";
+                return new PortableRelease(version, id, size, digest[7..], notes);
+            }
         }
         throw new InvalidDataException("The latest release lacks a verified Windows x64 package.");
     }

@@ -36,8 +36,9 @@ Right-click the tray icon and choose Exit to stop the controller. Settings are
 saved per Windows user. To launch hidden, use --background in your shortcut.
 
 Updates: Source Switcher checks GitHub once at startup. Open Settings >
-Updates to check again or install an available update. The app restarts
-after installation. An amber ! next to Settings marks an available update.
+Updates to check again. Select Update to review the changelog, then Close
+or Update to download and install it. The app restarts after installation.
+An amber ! next to Settings marks an available update.
 Use a dedicated folder containing the extracted app.
 
 The release feed is private. Sign in through Git Credential Manager on

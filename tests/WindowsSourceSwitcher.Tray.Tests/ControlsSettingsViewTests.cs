@@ -208,6 +208,19 @@ public sealed class ControlsSettingsViewTests
         Assert.False(settings.UpdateAvailable);
     });
 
+    [Fact]
+    public void Update_changelog_has_distinct_close_and_install_actions() => OnSta(() =>
+    {
+        using var dialog = new UpdateChangelogDialog(new(new Version(1, 2, 1), 1, 10, "digest", "- New update preview."));
+        Assert.Contains("v1.2.1", dialog.Text);
+        var notes = Assert.Single(Find<TextBox>(dialog));
+        Assert.True(notes.ReadOnly);
+        Assert.Equal("- New update preview.", notes.Text);
+        var buttons = Find<Button>(dialog).ToArray();
+        Assert.Equal(DialogResult.Cancel, Assert.Single(buttons, button => button.Text == "Close").DialogResult);
+        Assert.Equal(DialogResult.OK, Assert.Single(buttons, button => button.Text == "Update").DialogResult);
+    });
+
     private static CheckBox Hotkeys(Control view) => Find<CheckBox>(view).Single(control => control.AccessibleName == "Enable global hotkeys");
     private static Button Retry(Control view) => Find<Button>(view).Single(control => control.AccessibleName == "Retry global hotkey registration");
     private static void Click(Button button) => typeof(Button).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!
