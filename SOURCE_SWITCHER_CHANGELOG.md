@@ -1,5 +1,10 @@
 # Source Switcher changelog
 
+## v1.2.5
+
+- Reduced the Apple Music format-switch preflight and measured signal return separately from timeline confirmation.
+- Kept Rate detection checkbox colors and card layout steady during audio changes.
+
 ## v1.2.4
 
 - Settings and the update changelog use dark scrollbars, including while the changelog is open over Settings.

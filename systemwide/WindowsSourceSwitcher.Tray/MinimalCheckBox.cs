@@ -6,6 +6,7 @@ namespace WindowsSourceSwitcher.Tray;
 internal sealed class MinimalCheckBox : CheckBox
 {
     private bool _hovered;
+    internal bool KeepPaletteDuringFormatChange { get; init; }
 
     public MinimalCheckBox()
     {
@@ -35,16 +36,17 @@ internal sealed class MinimalCheckBox : CheckBox
     {
         if (SystemInformation.HighContrast) { base.OnPaint(args); return; }
         args.Graphics.Clear(BackColor);
+        var activePalette = Enabled || KeepPaletteDuringFormatChange;
         var box = new Rectangle(Padding.Left + Scale(1), Math.Max(0, (Height - Scale(15)) / 2), Scale(15), Scale(15));
-        using var fill = new SolidBrush(Checked ? (Enabled ? MinimalDarkTheme.Accent : MinimalDarkTheme.RaisedSurface)
+        using var fill = new SolidBrush(Checked ? (activePalette ? MinimalDarkTheme.Accent : MinimalDarkTheme.RaisedSurface)
             : _hovered && Enabled ? MinimalDarkTheme.HoverSurface : MinimalDarkTheme.Surface);
         args.Graphics.FillRectangle(fill, box);
-        using var border = new Pen(Enabled ? MinimalDarkTheme.MutedText : MinimalDarkTheme.Border);
+        using var border = new Pen(activePalette ? MinimalDarkTheme.MutedText : MinimalDarkTheme.Border);
         args.Graphics.DrawRectangle(border, box.X, box.Y, box.Width - 1, box.Height - 1);
         if (CheckState != CheckState.Unchecked)
         {
             args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var check = new Pen(Enabled ? MinimalDarkTheme.Background : MinimalDarkTheme.MutedText, Scale(2));
+            using var check = new Pen(activePalette ? MinimalDarkTheme.Background : MinimalDarkTheme.MutedText, Scale(2));
             if (CheckState == CheckState.Indeterminate)
                 args.Graphics.DrawLine(check, box.Left + Scale(3), box.Top + Scale(7), box.Right - Scale(3), box.Top + Scale(7));
             else
@@ -54,7 +56,7 @@ internal sealed class MinimalCheckBox : CheckBox
         }
         var textBounds = new Rectangle(box.Right + Scale(8), Padding.Top,
             Math.Max(0, Width - box.Right - Scale(8) - Padding.Right), Height - Padding.Vertical);
-        TextRenderer.DrawText(args.Graphics, Text, Font, textBounds, Enabled ? ForeColor : MinimalDarkTheme.MutedText,
+        TextRenderer.DrawText(args.Graphics, Text, Font, textBounds, activePalette ? ForeColor : MinimalDarkTheme.MutedText,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
                 | (UseMnemonic ? ShowKeyboardCues ? 0 : TextFormatFlags.HidePrefix : TextFormatFlags.NoPrefix));
         if (Focused && ShowFocusCues)

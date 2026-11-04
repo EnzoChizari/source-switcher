@@ -12,7 +12,7 @@ public sealed class AppleMusicSwitchGuardTests
         var result = await clock.Guard.RunAsync(session, () => true, () => true, () => .1f,
             () => { writes++; return Applied; }, default);
         Assert.Equal(1, writes); Assert.True(result.Applied?.Success); Assert.True(result.PlaybackObserved);
-        Assert.InRange(clock.Elapsed.TotalMilliseconds, 200, 600);
+        Assert.InRange(clock.Elapsed.TotalMilliseconds, 120, 300);
     }
     [Theory]
     [InlineData(MediaTransportPlaybackStatus.Paused)]
@@ -80,7 +80,7 @@ public sealed class AppleMusicSwitchGuardTests
         var result = await clock.Guard.RunAsync(session, () => true, () => true,
             () => wrote && !missingTimeline ? 0f : .1f, () => { wrote = true; return Applied; }, default);
         Assert.True(result.Applied?.Success); Assert.False(result.PlaybackObserved);
-        Assert.InRange(clock.Elapsed.TotalSeconds, 6.2, 6.4);
+        Assert.InRange(clock.Elapsed.TotalSeconds, 6.12, 6.24);
     }
     [Theory]
     [InlineData(false)]
@@ -110,7 +110,7 @@ public sealed class AppleMusicSwitchGuardTests
         TimeSpan? publishedAt = null;
         var result = await clock.Guard.RunAsync(new Session { Advance = false }, () => true, () => true, () => .1f,
             () => Applied, default, () => publishedAt = clock.Elapsed);
-        Assert.Equal(TimeSpan.FromMilliseconds(200), publishedAt);
+        Assert.Equal(TimeSpan.FromMilliseconds(120), publishedAt);
         Assert.True(result.Applied?.Success);
         Assert.False(result.PlaybackObserved);
         Assert.True(clock.Elapsed >= TimeSpan.FromSeconds(6));

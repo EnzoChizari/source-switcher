@@ -247,6 +247,22 @@ public sealed class ControlsSettingsViewTests
         Assert.Contains(rate.Items.Cast<object>(), item => item.ToString()!.Contains("192 kHz"));
     });
 
+    [Fact]
+    public void Rate_detection_card_stays_stable_when_an_automatic_status_wraps() => OnSta(() =>
+    {
+        using var settings = new ControlsSettingsView { Size = new System.Drawing.Size(550, 490) };
+        settings.CreateControl();
+        settings.SetFavoriteAutoSwitchStatus("Automatic switching is off.");
+        settings.PerformLayout();
+        var heading = Find<Label>(settings).Single(label => label.Text == "Rate detection");
+        var card = Assert.IsType<SectionCard>(heading.Parent!.Parent);
+        var originalTop = card.Top;
+        settings.SetFavoriteAutoSwitchStatus("Checking playback." + Environment.NewLine + "Waiting for the selected app.");
+        settings.PerformLayout();
+        // WinForms may round the scaled table row by one pixel.
+        Assert.InRange(card.Top, originalTop - 1, originalTop + 1);
+    });
+
     private static CheckBox Hotkeys(Control view) => Find<CheckBox>(view).Single(control => control.AccessibleName == "Enable global hotkeys");
     private static Button Retry(Control view) => Find<Button>(view).Single(control => control.AccessibleName == "Retry global hotkey registration");
     private static void Click(Button button) => typeof(Button).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!

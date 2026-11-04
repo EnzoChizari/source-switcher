@@ -17,9 +17,12 @@ internal sealed class SourcePopup : Form
     private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(430, 0), Text = "Select an output, then an app playing on it." };
     private readonly Label _evidence = new() { AutoSize = true, MaximumSize = new Size(430, 0), Text = "Select an app to see its detection support and saved target." };
     private readonly CheckBox _enabled = new MinimalCheckBox() { AutoSize = true, Text = "Enable switching", Checked = true };
-    private readonly CheckBox _catalog = new MinimalCheckBox() { AutoSize = true, Text = "Use Apple Music catalog rate (estimate)" };
-    private readonly CheckBox _streamDetection = new MinimalCheckBox() { AutoSize = true, Text = "Auto-detect application stream rate" };
-    private readonly CheckBox _followBits = new MinimalCheckBox() { AutoSize = true, Text = "Follow source bit depth (16, 24, 32-bit)" };
+    private readonly CheckBox _catalog = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
+        Text = "Use Apple Music catalog rate (estimate)" };
+    private readonly CheckBox _streamDetection = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
+        Text = "Auto-detect application stream rate" };
+    private readonly CheckBox _followBits = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
+        Text = "Follow source bit depth (16, 24, 32-bit)" };
     private readonly Button _refresh = new() { AutoSize = true, Text = "Refresh / retry" };
     private readonly Button _release = new() { AutoSize = true, Text = "Release master" };
     private readonly Button _favorite = new() { AutoSize = true, Text = "Favorite master", AccessibleName = "Favorite master" };

@@ -18,9 +18,10 @@ internal sealed class AppleMusicSwitchGuard(
     Func<TimeSpan, CancellationToken, Task>? delay = null,
     Func<TimeSpan>? elapsed = null)
 {
-    internal static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(100);
+    internal static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(60);
     internal static readonly TimeSpan StartupTimeout = TimeSpan.FromMilliseconds(1500);
-    internal static readonly TimeSpan HealthyConfirmation = TimeSpan.FromMilliseconds(200);
+    internal static readonly TimeSpan HealthyConfirmation = TimeSpan.FromMilliseconds(120);
+    internal static readonly TimeSpan TimelineConfirmation = TimeSpan.FromMilliseconds(150);
     internal static readonly TimeSpan RebuildTimeout = TimeSpan.FromSeconds(6);
     public async Task<AppleSwitchResult> RunAsync(IAppleSwitchSession? session, Func<bool> contextCurrent,
         Func<bool?> renderActive, Func<float?> signalPeak, Func<ApplyResult?> apply, CancellationToken cancellationToken,
@@ -67,6 +68,7 @@ internal sealed class AppleMusicSwitchGuard(
             bool? lastActive = null;
             float? lastPeak = null;
             TimeSpan? lastPosition = null;
+            TimeSpan? firstSignal = null;
             while (Now() - afterWrite <= RebuildTimeout)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -75,9 +77,12 @@ internal sealed class AppleMusicSwitchGuard(
                     return new(applied, "Apple Music confirmation stopped after a track, pause or master change; no transport command sent.", false, false);
                 var peak = signalPeak();
                 lastActive = renderActive(); lastPeak = peak; lastPosition = state.Position;
-                if (lastActive == true && peak is > 0.001f && float.IsFinite(peak.Value)
-                    && position is { } start && state.Position is { } current && current - start >= TimeSpan.FromMilliseconds(300))
-                    return new(applied, $"Apple-associated session signal and Apple Music timeline resumed {(Now() - afterWrite).TotalMilliseconds:0} ms after endpoint readback; physical audibility and individual contributors to shared sessions are unverified.", true, false);
+                if (lastActive == true && peak is > 0.001f && float.IsFinite(peak.Value))
+                {
+                    firstSignal ??= Now() - afterWrite;
+                    if (position is { } start && state.Position is { } current && current - start >= TimelineConfirmation)
+                        return new(applied, $"Apple-associated signal returned after {firstSignal.Value.TotalMilliseconds:0} ms; signal and timeline confirmed {(Now() - afterWrite).TotalMilliseconds:0} ms after endpoint readback. Physical audibility is unverified.", true, false);
+                }
                 await Wait(cancellationToken).ConfigureAwait(false);
             }
             return new(applied, $"Output format confirmed, but Apple Music audio/timeline recovery is unconfirmed (active={lastActive}, peak={lastPeak:G4}, position={position}->{lastPosition}). Check the player; no restart or transport command was sent.", false, false);

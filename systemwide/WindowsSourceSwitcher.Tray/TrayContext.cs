@@ -1063,7 +1063,7 @@ internal sealed class TrayContext : ApplicationContext
             {
                 _candidateKey = key;
                 _candidateSince = System.Diagnostics.Stopwatch.GetTimestamp();
-                // Apple has its own 200 ms same-track/live-signal preflight below.
+                // Apple has its own same-track/live-signal preflight below.
                 // Its evidence is revalidated immediately before the write, so an
                 // additional sequential 180 ms timer only delays the same decision.
                 if (appleSource is null)

@@ -53,8 +53,11 @@ internal sealed class ControlsSettingsView : UserControl
     public event Action? BrowserRegistrationRequested;
     public ControlsSettingsView()
     {
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
         Dock = DockStyle.Fill;
         AutoScroll = true;
+        _autoFavoriteStatus.MinimumSize = new Size(0, 2 * _autoFavoriteStatus.Font.Height + 4);
+        _fullscreenStatus.MinimumSize = new Size(0, 2 * _fullscreenStatus.Font.Height + 4);
         _layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true,
             Padding = new Padding(16, 0, 16, 16), ColumnCount = 1, RowCount = 0 };
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
