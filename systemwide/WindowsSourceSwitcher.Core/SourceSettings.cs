@@ -17,6 +17,7 @@ public sealed class SourceSettings
     public string? SelectedSourceDisplayName { get; set; }
     public long SelectionRevision { get; set; }
     public Dictionary<string, int> ManualSampleRatesHz { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, int> ManualBitDepths { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, string> FavoriteSources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, string> PinnedSources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? LastKnownSourceKey { get; set; }
@@ -124,5 +125,9 @@ public sealed class SourceSettings
             if (string.IsNullOrWhiteSpace(key) || !SampleRates.IsValid(rate) || !uniqueKeys.Add(key))
                 throw new InvalidDataException("Manual sample rates require a source key and a rate between 8000 and 768000 Hz.");
         }
+        uniqueKeys.Clear();
+        if (ManualBitDepths is null || ManualBitDepths.Any(entry => string.IsNullOrWhiteSpace(entry.Key)
+            || entry.Value is not (16 or 24 or 32) || !uniqueKeys.Add(entry.Key)))
+            throw new InvalidDataException("Manual bit depths require a source key and 16, 24, or 32 bits.");
     }
 }

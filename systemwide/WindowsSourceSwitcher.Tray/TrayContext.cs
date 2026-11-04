@@ -220,6 +220,12 @@ internal sealed class TrayContext : ApplicationContext
             if (rate is { } hz) _settings.ManualSampleRatesHz[key] = hz;
             else _settings.ManualSampleRatesHz.Remove(key);
         });
+        _popup.BitDepthSelected += bits => Change(() =>
+        {
+            if (_settings.SelectedSourceKey is not { } key) return;
+            if (bits is { } depth) _settings.ManualBitDepths[key] = depth;
+            else _settings.ManualBitDepths.Remove(key);
+        });
         _popup.SwitchingEnabledChanged += enabled => Change(() => _settings.SwitchingEnabled = enabled);
         _popup.CatalogChanged += enabled => Change(() => { _settings.CatalogRateDetectionEnabled = enabled; InvalidateObservation(); });
         _popup.FollowBitDepthChanged += enabled => Change(() => _settings.FollowSourceBitDepth = enabled);
@@ -1015,7 +1021,7 @@ internal sealed class TrayContext : ApplicationContext
             if (snapshot.Error is { } error) { _status = error; return; }
             if (selectedKey is null)
             {
-                _status = "Play something through this output, then select its app in Sources to follow its rate.";
+                _status = "Play something through this output, then double-click its app in Sources to follow its rate.";
                 if (_streamMonitor is { IsRunning: false, CanRetryAutomatically: false, Error: { } streamError })
                     _status += " " + streamError + " Manual rates are available after you select an app.";
             }
@@ -1038,10 +1044,13 @@ internal sealed class TrayContext : ApplicationContext
 
             var target = EndpointFormatPolicy.SelectExact(
                 new(snapshot.Current.SampleRateHz, snapshot.Current.BitDepth, snapshot.Current.Channels),
-                snapshot.Formats.Select(f => new EndpointFormat(f.SampleRateHz, f.BitDepth, f.Channels)), desired, sourceBits);
+                snapshot.Formats.Select(f => new EndpointFormat(f.SampleRateHz, f.BitDepth, f.Channels)), desired,
+                sourceBits, decision.ManualBitDepth);
             if (target is null)
             {
-                _status = $"{SourcePopup.FormatRate(desired)} is unavailable for the selected output format. Output unchanged.";
+                _status = decision.ManualBitDepth
+                    ? $"{SourcePopup.FormatRate(desired)} at {sourceBits}-bit is unavailable. Choose Auto or another master bit depth."
+                    : $"{SourcePopup.FormatRate(desired)} is unavailable for the selected output format. Output unchanged.";
                 return;
             }
             var formatLabel = sourceBits is null ? SourcePopup.FormatRate(desired)
@@ -1118,7 +1127,7 @@ internal sealed class TrayContext : ApplicationContext
                     && (selectedKey is null || catalogSession is null
                         || _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) != true)) return null;
                 if (appleSource is null)
-                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits);
+                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits, decision.ManualBitDepth);
 
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_appleSwitchLifetime.Token);
                 deadline.CancelAfter(TimeSpan.FromSeconds(9));
@@ -1140,7 +1149,7 @@ internal sealed class TrayContext : ApplicationContext
                     if (decision.Reason == RateDecisionReason.WasapiStream && _streamMonitor?.IsEvidenceCurrent(observedStreamVersion) != true) return null;
                     if (decision.Reason == RateDecisionReason.CatalogMetadata && (selectedKey is null || catalogSession is null
                         || _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) != true)) return null;
-                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits);
+                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits, decision.ManualBitDepth);
                 }
                 using (session as IDisposable)
                     appleSwitch = await new AppleMusicSwitchGuard().RunAsync(session, ContextCurrent, () => live.Active,
@@ -1741,7 +1750,8 @@ internal sealed class TrayContext : ApplicationContext
                 : "Not observed"),
             new("Follow bit depth", _settings.FollowSourceBitDepth
                 ? _lastDecision?.DesiredBitsPerSample is { } wantedBits
-                    ? $"On · {wantedBits}-bit " + (_lastDecision.Reason == RateDecisionReason.CatalogMetadata ? "catalog estimate" : "submitted PCM")
+                    ? $"On · {wantedBits}-bit " + (_lastDecision.ManualBitDepth ? "manual override"
+                        : _lastDecision.Reason == RateDecisionReason.CatalogMetadata ? "catalog estimate" : "submitted PCM")
                     : "On · waiting for bit-depth evidence"
                 : "Off · keep output depth"),
             new("Windows mix", Format(_snapshot.Mix)),

@@ -1,5 +1,17 @@
 # Source Switcher changelog
 
+## v1.3.0
+
+### Source controls
+
+- Click a source once to select it for Favorite and Pin. Double-click it to make it master.
+- Save a master bit-depth override for an individual app while Follow source bit depth is enabled.
+- Spotify's 32-bit Windows stream no longer sets the output depth in Auto. A known 16- or 24-bit track can use a manual depth.
+
+### Updates
+
+- Redesigned the update window with version information, formatted scrolling notes, and a fixed amber Update button.
+
 ## v1.2.5
 
 - Reduced the Apple Music format-switch preflight and measured signal return separately from timeline confirmation.

@@ -60,11 +60,13 @@ internal static class MinimalDarkTheme
             case Button button:
                 button.UseVisualStyleBackColor = false;
                 button.FlatStyle = FlatStyle.Flat;
-                button.BackColor = Equals(button.Tag, "WindowChrome") ? Background : RaisedSurface;
+                var primary = Equals(button.Tag, "PrimaryAction");
+                button.BackColor = primary ? Accent : Equals(button.Tag, "WindowChrome") ? Background : RaisedSurface;
+                if (primary) button.ForeColor = SystemInformation.HighContrast ? SystemColors.HighlightText : Color.Black;
                 button.FlatAppearance.BorderColor = Border;
                 button.FlatAppearance.BorderSize = Equals(button.Tag, "WindowChrome") ? 0 : 1;
-                button.FlatAppearance.MouseOverBackColor = HoverSurface;
-                button.FlatAppearance.MouseDownBackColor = SelectedSurface;
+                button.FlatAppearance.MouseOverBackColor = primary ? Accent : HoverSurface;
+                button.FlatAppearance.MouseDownBackColor = primary ? Accent : SelectedSurface;
                 break;
             case CheckBox checkbox:
                 checkbox.FlatStyle = FlatStyle.Flat;
@@ -130,7 +132,8 @@ internal static class MinimalDarkTheme
     {
         if (!control.IsHandleCreated || control.IsDisposed
             || control is not (ListView or ScrollableControl { AutoScroll: true }
-                or TextBox { Multiline: true, ScrollBars: not ScrollBars.None })) return;
+                or TextBox { Multiline: true, ScrollBars: not ScrollBars.None }
+                or RichTextBox { Multiline: true, ScrollBars: not RichTextBoxScrollBars.None })) return;
         if (attachment.ScrollBars?.IsAttachedTo(control.Handle) != true)
         {
             attachment.ScrollBars?.Dispose();

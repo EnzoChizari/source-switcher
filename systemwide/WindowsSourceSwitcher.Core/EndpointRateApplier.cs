@@ -18,7 +18,8 @@ public sealed record ApplyResult(bool Success, bool Changed, string Detail);
 /// <summary>Applies the requested rate with the selected endpoint precision and original channel count.</summary>
 public static class EndpointRateApplier
 {
-    public static ApplyResult Apply(IEndpointRateAdapter adapter, string endpointId, int desiredHz, int? sourceBitsPerSample = null)
+    public static ApplyResult Apply(IEndpointRateAdapter adapter, string endpointId, int desiredHz,
+        int? sourceBitsPerSample = null, bool requireExactDepth = false)
     {
         var changed = false;
         try
@@ -37,11 +38,14 @@ public static class EndpointRateApplier
                 && (sourceBitsPerSample is null || current.BitsPerSample == sourceBitsPerSample))
                 return new(true, false, $"Endpoint device and shared mix already use {desiredHz} Hz.");
 
-            var selected = EndpointFormatPolicy.SelectExact(current, adapter.ReadSupportedFormats(endpointId), desiredHz, sourceBitsPerSample);
+            var selected = EndpointFormatPolicy.SelectExact(current, adapter.ReadSupportedFormats(endpointId), desiredHz,
+                sourceBitsPerSample, requireExactDepth);
             if (selected is null)
                 return new(false, false, sourceBitsPerSample is null
                     ? $"Endpoint does not advertise {desiredHz} Hz at its current {current.BitsPerSample}-bit, {current.Channels}-channel format; no change was attempted."
-                    : $"Endpoint does not advertise {desiredHz} Hz in 16-, 24-, or 32-bit PCM with {current.Channels} channels.");
+                    : requireExactDepth
+                        ? $"Endpoint does not advertise {desiredHz} Hz at {sourceBitsPerSample}-bit with {current.Channels} channels."
+                        : $"Endpoint does not advertise {desiredHz} Hz in 16-, 24-, or 32-bit PCM with {current.Channels} channels.");
 
             if (selected == current && mix?.SampleRateHz == desiredHz)
                 return new(true, false, $"The endpoint already uses the supported format {Describe(current)}.");

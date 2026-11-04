@@ -47,7 +47,7 @@ public sealed class DarkScrollBarPainterTests
         {
             try
             {
-                var notes = dialog.Controls[0].Controls.OfType<TextBox>().Single();
+                var notes = dialog.Controls[0].Controls.OfType<Panel>().SelectMany(panel => panel.Controls.OfType<RichTextBox>()).Single();
                 AssertDarkBars(notes, -5);
                 AssertDarkBars(settings, -5);
             }

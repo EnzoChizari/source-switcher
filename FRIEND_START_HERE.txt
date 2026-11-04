@@ -11,7 +11,8 @@ For 64-bit Intel and AMD Windows PCs. Tested on Windows 11 x64.
    the tour and Quick tour in the tray menu to reopen it.
 2. In Sources, check Output device. The first launch selects the current
    Windows default. Pick your DAC or speakers if your audio uses another output.
-3. Start playing audio. Select its app in Sources to make it the rate master.
+3. Start playing audio. Double-click its app in Sources to make it the rate
+   master. Single-click a row to select it for Pin or Favorite.
    The Mixer page provides per-app volume, mute and signal meters.
 4. If automatic stream detection says it needs permission, exit from the tray
    menu and use Run as administrator on the EXE. If you cannot elevate or the
@@ -29,6 +30,9 @@ Settings > Rate detection has an optional Follow source bit depth checkbox.
 It uses observed 16-, 24-, or 32-bit PCM or 32-bit float. With Apple Music
 catalog estimates enabled, it uses that track estimate's bit depth.
 When depth is unknown or the checkbox is off, the app keeps the current depth.
+Use Master bit depth in Sources to save a depth for the current master. Spotify
+can send a 32-bit Windows stream even when the original track is 16 or 24 bit.
+Spotify Auto retains the output depth in that case.
 Settings > Output capabilities shows the highest detected rate at each depth
 for your selected output. The maximum is a capability, not a playback target.
 

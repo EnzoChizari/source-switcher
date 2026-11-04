@@ -70,6 +70,15 @@ public sealed class EndpointRateApplierTests
     }
 
     [Fact]
+    public void UnsupportedManualDepthCannotFallBackToAnotherDepth()
+    {
+        var adapter = new FakeAdapter { Supported = [new(44100, 24, 2), new(44100, 32, 2)] };
+        var result = EndpointRateApplier.Apply(adapter, EndpointId, 44100, 16, requireExactDepth: true);
+        Assert.False(result.Success);
+        Assert.Empty(adapter.Writes);
+    }
+
+    [Fact]
     public void UnsupportedExactRateNeverWritesOrChoosesNearestRate()
     {
         var adapter = new FakeAdapter { Supported = [new(88200, 24, 2), new(96000, 24, 2)] };

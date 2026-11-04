@@ -63,10 +63,11 @@ public static class AppleMusicIdentity
         var favorites = MigrateDictionary(settings.FavoriteSources, static name => IsDefaultHelperName(name) ? "AppleMusic" : name);
         var pins = MigrateDictionary(settings.PinnedSources, static name => IsDefaultHelperName(name) ? "AppleMusic" : name);
         var manual = MigrateDictionary(settings.ManualSampleRatesHz, static rate => rate);
+        var depths = MigrateDictionary(settings.ManualBitDepths, static depth => depth);
         var changed = selectedChanged || !string.Equals(held, settings.LastKnownSourceKey, StringComparison.Ordinal)
             || !string.Equals(displayName, settings.SelectedSourceDisplayName, StringComparison.Ordinal)
             || !SameEntries(settings.FavoriteSources, favorites) || !SameEntries(settings.PinnedSources, pins)
-            || !SameEntries(settings.ManualSampleRatesHz, manual);
+            || !SameEntries(settings.ManualSampleRatesHz, manual) || !SameEntries(settings.ManualBitDepths, depths);
         if (!changed) return false;
         settings.SelectedSourceKey = selected;
         settings.SelectedSourceDisplayName = displayName;
@@ -75,6 +76,7 @@ public static class AppleMusicIdentity
         settings.FavoriteSources = favorites;
         settings.PinnedSources = pins;
         settings.ManualSampleRatesHz = manual;
+        settings.ManualBitDepths = depths;
         settings.Validate();
         return true;
     }

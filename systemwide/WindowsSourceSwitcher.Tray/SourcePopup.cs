@@ -9,9 +9,10 @@ internal sealed class SourcePopup : Form
 {
     private readonly ComboBox _devices = new MinimalComboBox() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly ListView _sources = new MinimalListView() { View = View.Details, FullRowSelect = true, MultiSelect = false,
-        HideSelection = false, Dock = DockStyle.Fill, HeaderStyle = ColumnHeaderStyle.Nonclickable };
+        HideSelection = false, Dock = DockStyle.Fill, HeaderStyle = ColumnHeaderStyle.Nonclickable, Activation = ItemActivation.Standard };
     private readonly ComboBox _rates = new MinimalComboBox() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill,
-        AccessibleName = "Selected app's target rate" };
+        AccessibleName = "Master's target rate" };
+    private readonly ComboBox _depths = new MinimalComboBox() { Dock = DockStyle.Fill, AccessibleName = "Master bit depth" };
     private readonly Label _master = new() { AutoSize = true, MaximumSize = new Size(430, 0), Text = "Master: choose an app below" };
     private readonly Label _format = new() { AutoSize = true, Text = "Output: choose a Windows playback device" };
     private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(430, 0), Text = "Select an output, then an app playing on it." };
@@ -25,10 +26,9 @@ internal sealed class SourcePopup : Form
         Text = "Follow source bit depth (16, 24, 32-bit)" };
     private readonly Button _refresh = new() { AutoSize = true, Text = "Refresh / retry" };
     private readonly Button _release = new() { AutoSize = true, Text = "Release master" };
-    private readonly Button _favorite = new() { AutoSize = true, Text = "Favorite master", AccessibleName = "Favorite master" };
-    private readonly Button _pin = new() { Text = "Pin", AccessibleName = "Pin master", AutoSize = true,
+    private readonly Button _favorite = new() { AutoSize = true, Text = "☆", AccessibleName = "Favorite selected source" };
+    private readonly Button _pin = new() { Text = "Pin", AccessibleName = "Pin selected source", AutoSize = true,
         AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(60, 30) };
-    private bool _masterIsPinned;
     private readonly ToolTip _tips = new();
     private readonly TabControl _tabs = new MinimalTabControl() { Dock = DockStyle.Fill, NavigationOnly = true, TabStop = false };
     private readonly ImageList _sourceRowSpacing = new() { ImageSize = new Size(1, 30), ColorDepth = ColorDepth.Depth32Bit };
@@ -54,9 +54,10 @@ internal sealed class SourcePopup : Form
     private int? _capabilityChannels;
     private int _deviceSelectionIndex = -1;
     private string _rateSignature = "";
-    private string? _favoriteMasterKey;
-    private string? _favoriteMasterName;
-    private bool _masterIsFavorite;
+    private string _depthSignature = "";
+    private SourceListEntry? _selectedRow;
+    private SourceSettings? _rowSettings;
+    private bool _rowActionsLocked;
 
     public event Action<string>? DeviceSelected;
     public event Action<PlatformAudioSource>? SourceSelected;
@@ -64,6 +65,7 @@ internal sealed class SourcePopup : Form
     public event Action<string, string, bool>? FavoriteChanged;
     public event Action<string, string, bool>? PinChanged;
     public event Action<int?>? RateSelected;
+    public event Action<int?>? BitDepthSelected;
     public event Action<bool>? SwitchingEnabledChanged;
     public event Action<bool>? CatalogChanged;
     public event Action<bool>? FollowBitDepthChanged;
@@ -168,10 +170,11 @@ internal sealed class SourcePopup : Form
         outputCard.AutoSize = true;
         outputCard.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         outputCard.Controls.Add(output);
-        var apps = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
+        var apps = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = Padding.Empty };
         apps.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         apps.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         apps.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        apps.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var masterActions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty };
         masterActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         masterActions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40));
@@ -185,14 +188,21 @@ internal sealed class SourcePopup : Form
         masterActions.Controls.Add(_favorite, 1, 0);
         masterActions.Controls.Add(_pin, 2, 0);
         apps.Controls.Add(masterActions, 0, 0); apps.Controls.Add(_sources, 0, 1);
+        apps.Controls.Add(new Label { AutoSize = true, ForeColor = Color.DimGray,
+            Text = "Select to pin or favorite. Double-click to set master." }, 0, 2);
         Card(1).Controls.Add(apps);
-        var target = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Margin = Padding.Empty };
-        target.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var target = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4, Margin = Padding.Empty };
+        target.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 64));
+        target.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36));
         foreach (var height in new[] { 22, 32, 44, 48 }) target.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
-        target.Controls.Add(new Label { Text = "Selected app's target rate", AutoSize = true }, 0, 0);
+        target.Controls.Add(new Label { Text = "Master's target rate", AutoSize = true }, 0, 0);
+        target.Controls.Add(new Label { Text = "Master bit depth", AutoSize = true }, 1, 0);
         target.Controls.Add(_rates, 0, 1);
+        target.Controls.Add(_depths, 1, 1);
         foreach (var label in new[] { _status, _evidence }) { label.AutoSize = false; label.Dock = DockStyle.Fill; label.AutoEllipsis = true; label.MaximumSize = Size.Empty; }
         target.Controls.Add(_evidence, 0, 2); target.Controls.Add(_status, 0, 3);
+        target.SetColumnSpan(_evidence, 2);
+        target.SetColumnSpan(_status, 2);
         Card(2).Controls.Add(target);
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty,
             AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
@@ -236,14 +246,18 @@ internal sealed class SourcePopup : Form
         _devices.SelectedIndexChanged += (_, _) => { if (!_rendering && _devices.SelectedItem is DeviceChoice d && d.Id is not null) DeviceSelected?.Invoke(d.Id); };
         _sources.SelectedIndexChanged += (_, _) =>
         {
-            if (_rendering || _sources.SelectedItems.Count != 1 || _sources.SelectedItems[0].Tag is not SourceListEntry entry) return;
-            // Creating the native ListView handle can replay its saved selection. Highlighting
-            // the current master is presentation, not a new selection requested by the user.
-            if (entry.IsMaster) return;
+            if (_rendering) return;
+            _selectedRow = _sources.SelectedItems.Count == 1 ? _sources.SelectedItems[0].Tag as SourceListEntry : null;
+            UpdateSourceActions();
+        };
+        _sources.ItemActivate += (_, _) =>
+        {
+            if (_rendering || _rowActionsLocked || _selectedRow is not { IsMaster: false } entry) return;
             if (entry.LiveSource is { } source) SourceSelected?.Invoke(source);
             else if (entry.CanSelectSaved) SavedSourceSelected?.Invoke(entry.Identity, entry.Name);
         };
         _rates.SelectedIndexChanged += (_, _) => { if (!_rendering && _rates.SelectedItem is RateChoice r) RateSelected?.Invoke(r.Rate); };
+        _depths.SelectedIndexChanged += (_, _) => { if (!_rendering && _depths.SelectedItem is DepthChoice depth) BitDepthSelected?.Invoke(depth.Bits); };
         _enabled.CheckedChanged += (_, _) => { if (!_rendering) SwitchingEnabledChanged?.Invoke(_enabled.Checked); };
         _catalog.CheckedChanged += (_, _) => { if (!_rendering) CatalogChanged?.Invoke(_catalog.Checked); };
         _streamDetection.CheckedChanged += (_, _) => { if (!_rendering) StreamDetectionChanged?.Invoke(_streamDetection.Checked); };
@@ -252,21 +266,22 @@ internal sealed class SourcePopup : Form
         _release.Click += (_, _) => ReleaseRequested?.Invoke();
         _favorite.Click += (_, _) =>
         {
-            if (!_rendering && _favorite.Enabled && _favoriteMasterKey is { } key && _favoriteMasterName is { } name)
-                FavoriteChanged?.Invoke(key, name, !_masterIsFavorite);
+            if (!_rendering && _favorite.Enabled && _selectedRow is { } row)
+                FavoriteChanged?.Invoke(row.Identity, row.Name, !row.IsFavorite);
         };
         _pin.Click += (_, _) =>
         {
-            if (!_rendering && _pin.Enabled && _favoriteMasterKey is { } key && _favoriteMasterName is { } name)
-                PinChanged?.Invoke(key, name, !_masterIsPinned);
+            if (!_rendering && _pin.Enabled && _selectedRow is { } row)
+                PinChanged?.Invoke(row.Identity, row.Name, !row.IsPinned);
         };
         _tips.SetToolTip(_pin, "◆ Pins persist across restarts. Playing pinned apps rank below favorites and above regular apps when automatic source priority is on.");
         _tips.SetToolTip(_catalog, "Apple Music only; this does not detect rates for Spotify, browsers, or other apps. Catalog metadata describes an available lossless asset, not the actual decoded stream. Off by default.");
         _tips.SetToolTip(_streamDetection, "Reads current Windows Audio Service stream formats and observes WASAPI stream changes. Requires administrator or ETW permissions. This is submitted PCM; apps may resample media internally. Unsupported Windows schemas remain unknown.");
-        _tips.SetToolTip(_rates, "Overrides are saved by executable path. Only rates proven by the endpoint probe are offered; channels and bit depth are preserved.");
+        _tips.SetToolTip(_rates, "Overrides are saved by executable path. The list shows rates the output reports for the current or manually chosen depth and channel count.");
+        _tips.SetToolTip(_depths, "Enable Follow source bit depth in Settings to use Auto or a manual depth saved for this master.");
         _tips.SetToolTip(_refresh, "Refresh devices, audio sources and existing stream formats without detaching the live listener. Retry detection if it has stopped.");
-        _tips.SetToolTip(_favorite, "Save or remove the current master's executable as a favorite. ★ marks favorites, which stay in the source list without an audio session. This does not change the master or launch an app.");
-        _favorite.AccessibleDescription = "Save or remove the current master as a favorite without changing the selected source. Favorites are marked with a star and remain listed with no audio session.";
+        _tips.SetToolTip(_favorite, "Save or remove the highlighted source as a favorite. ★ marks favorites.");
+        _favorite.AccessibleDescription = "Toggle favorite for the highlighted source without changing the rate master.";
         _sources.AccessibleName = "Audio sources; star marks favorites";
         FormClosing += (_, e) => { if (e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; Hide(); } };
         MinimalDarkTheme.Apply(this);
@@ -422,10 +437,10 @@ internal sealed class SourcePopup : Form
     internal FirstRunTutorial CreateTutorial(Action finished) => new(this, _tabs,
     [
         new(0, _devices, "Choose where sound plays", "Pick your speakers or DAC here. Click this tip or the yellow box to go on."),
-        new(0, _sources, "Pick the app to follow", "Choose the app whose sound rate you want to follow. Other apps can still play."),
+        new(0, _sources, "Pick the app to follow", "Double-click the app you want as master. A single click selects it for Pin or Favorite."),
         new(0, _rates, "Leave the rate on Auto", "If you know the rate you want, choose it here instead."),
         new(1, _navigationButtons[1], "Change an app’s volume", "Mixer lets you turn each app up, down, or mute it."),
-        new(2, _navigationButtons[2], "Choose who goes first", "Controls can let a favorite or fullscreen app take over."),
+        new(2, _navigationButtons[2], "Choose who goes first", "Settings can let a favorite or fullscreen app take over."),
         new(3, _navigationButtons[3], "Check the sound rate", "Diagnostics shows the rate from the app and the rate Windows uses.")
     ], finished);
     public void RenderDiagnostics(AudioDiagnosticsSnapshot snapshot) { if (DiagnosticsVisible) _diagnostics.Render(snapshot); }
@@ -480,14 +495,8 @@ internal sealed class SourcePopup : Form
             _mixer.SetContext(devices.FirstOrDefault(device => device.Id == settings.TargetEndpointId)?.FriendlyName,
                 settings.SelectedSourceDisplayName);
             var selectedSource = sources.FirstOrDefault(s => StringComparer.OrdinalIgnoreCase.Equals(s.Identity, settings.SelectedSourceKey));
-            _favoriteMasterKey = settings.SelectedSourceKey;
-            _favoriteMasterName = settings.SelectedSourceDisplayName;
-            _masterIsFavorite = settings.SelectedSourceKey is { } favoriteKey && settings.IsFavorite(favoriteKey);
-            _masterIsPinned = settings.SelectedSourceKey is { } pinKey && settings.IsPinned(pinKey);
-            _pin.Text = _masterIsPinned ? "Unpin" : "Pin";
-            _pin.AccessibleName = _masterIsPinned ? "Unpin master" : "Pin master";
-            _favorite.AccessibleName = _masterIsFavorite ? "Unfavorite master" : "Favorite master";
-            _favorite.Text = _masterIsFavorite ? "★" : "☆";
+            _rowSettings = settings;
+            _rowActionsLocked = applying;
             var sourceRows = SourceListPresentation.Build(sources, settings, playback);
             var rowsSignature = string.Join("|", sources.Select(s => $"{s.Identity}:{s.SessionToken}:{s.IsActive}"))
                 + settings.SelectedSourceKey + ":" + settings.SelectionRevision + ":" + settings.CatalogRateDetectionEnabled
@@ -501,6 +510,9 @@ internal sealed class SourcePopup : Form
             if (_rowsSignature != rowsSignature)
             {
                 _rowsSignature = rowsSignature;
+                var selectedKey = _selectedRow?.Identity;
+                _selectedRow = sourceRows.FirstOrDefault(entry => StringComparer.OrdinalIgnoreCase.Equals(entry.Identity, selectedKey))
+                    ?? sourceRows.FirstOrDefault(entry => entry.IsMaster);
                 _sources.BeginUpdate();
                 _sources.Items.Clear();
                 foreach (var entry in sourceRows)
@@ -519,12 +531,15 @@ internal sealed class SourcePopup : Form
                             + (string.IsNullOrWhiteSpace(rate.Evidence) ? "" : "\n" + rate.Evidence)
                     };
                     _sources.Items.Add(row);
-                    if (entry.IsMaster) row.Selected = true;
+                    if (ReferenceEquals(entry, _selectedRow)) row.Selected = true;
                 }
                 _sources.ShowItemToolTips = true;
                 _sources.EndUpdate();
             }
-            var rates = formats.Where(f => current is not null && f.BitDepth == current.BitDepth && f.Channels == current.Channels)
+            int? savedDepth = settings.SelectedSourceKey is { } masterKey && settings.ManualBitDepths.TryGetValue(masterKey, out var bits)
+                ? bits : null;
+            var targetDepth = settings.FollowSourceBitDepth ? savedDepth ?? current?.BitDepth : current?.BitDepth;
+            var rates = formats.Where(f => current is not null && f.BitDepth == targetDepth && f.Channels == current.Channels)
                 .Select(f => f.SampleRateHz).Distinct().Order().ToList();
             int? manual = settings.SelectedSourceKey is not null && settings.ManualSampleRatesHz.TryGetValue(settings.SelectedSourceKey, out var value) ? value : null;
             var autoMode = SourceRatePresentation.AutoModeText(selectedSource, settings);
@@ -537,6 +552,17 @@ internal sealed class SourcePopup : Form
                 foreach (var hz in rates) _rates.Items.Add(new RateChoice(hz, FormatRate(hz) + " — manual override"));
                 _rates.SelectedItem = _rates.Items.Cast<RateChoice>().FirstOrDefault(r => r.Rate == manual);
             }
+            var depths = formats.Where(format => format.Channels == current?.Channels && format.BitDepth is 16 or 24 or 32)
+                .Select(format => format.BitDepth).Distinct().Order().ToArray();
+            var depthSignature = string.Join(",", depths) + ":" + savedDepth;
+            if (_depthSignature != depthSignature)
+            {
+                _depthSignature = depthSignature;
+                _depths.Items.Clear();
+                _depths.Items.Add(new DepthChoice(null, "Auto"));
+                foreach (var depth in depths) _depths.Items.Add(new DepthChoice(depth, $"{depth}-bit"));
+                _depths.SelectedItem = _depths.Items.Cast<DepthChoice>().FirstOrDefault(choice => choice.Bits == savedDepth);
+            }
             _enabled.Checked = settings.SwitchingEnabled;
             _catalog.Checked = settings.CatalogRateDetectionEnabled;
             _streamDetection.Checked = settings.StreamRateDetectionEnabled;
@@ -545,19 +571,32 @@ internal sealed class SourcePopup : Form
             _devices.Enabled = _sources.Enabled = _rates.Enabled = _catalog.Enabled = _release.Enabled = !applying;
             _enabled.Enabled = _refresh.Enabled = _streamDetection.Enabled = !applying;
             _rates.Enabled &= settings.SelectedSourceKey is not null;
+            _depths.Enabled = !applying && settings.FollowSourceBitDepth && settings.SelectedSourceKey is not null;
             _release.Enabled &= settings.SelectedSourceKey is not null;
-            _favorite.Enabled = !applying && SourceFavorites.CanFavorite(settings.SelectedSourceKey, settings.SelectedSourceDisplayName)
-                && (selectedSource is null || selectedSource.CanPersist)
-                && (_masterIsFavorite || settings.FavoriteSources.Count < SourceFavorites.MaxFavorites);
-            _pin.Enabled = !applying && SourceFavorites.CanFavorite(settings.SelectedSourceKey, settings.SelectedSourceDisplayName)
-                && (selectedSource is null || selectedSource.CanPersist)
-                && (_masterIsPinned || settings.PinnedSources.Count < SourceFavorites.MaxFavorites);
+            UpdateSourceActions();
             _status.Text = status;
             _evidence.Text = manual is { } savedRate && !rates.Contains(savedRate)
                 ? $"Saved override {FormatRate(savedRate)} is unavailable on this output. Choose Auto or an available rate."
+                : savedDepth is { } unavailableDepth && !depths.Contains(unavailableDepth)
+                ? $"Saved {unavailableDepth}-bit depth is unavailable on this output. Choose Auto or an available depth."
                 : evidence;
         }
         finally { _rendering = false; }
+    }
+
+    private void UpdateSourceActions()
+    {
+        var row = _selectedRow;
+        var favorite = row?.IsFavorite == true;
+        var pinned = row?.IsPinned == true;
+        var canBookmark = !_rowActionsLocked && row is not null
+            && SourceFavorites.CanFavorite(row.Identity, row.Name) && (row.LiveSource?.CanPersist ?? true);
+        _favorite.Text = favorite ? "★" : "☆";
+        _favorite.AccessibleName = favorite ? "Unfavorite selected source" : "Favorite selected source";
+        _pin.Text = pinned ? "Unpin" : "Pin";
+        _pin.AccessibleName = pinned ? "Unpin selected source" : "Pin selected source";
+        _favorite.Enabled = canBookmark && (favorite || _rowSettings?.FavoriteSources.Count < SourceFavorites.MaxFavorites);
+        _pin.Enabled = canBookmark && (pinned || _rowSettings?.PinnedSources.Count < SourceFavorites.MaxFavorites);
     }
 
     internal static string FormatRate(int rate) => SourceRatePresentation.FormatRate(rate);
@@ -568,4 +607,5 @@ internal sealed class SourcePopup : Form
     }
     private sealed record DeviceChoice(string? Id, string Name) { public override string ToString() => Name; }
     private sealed record RateChoice(int? Rate, string Name) { public override string ToString() => Name; }
+    private sealed record DepthChoice(int? Bits, string Name) { public override string ToString() => Name; }
 }

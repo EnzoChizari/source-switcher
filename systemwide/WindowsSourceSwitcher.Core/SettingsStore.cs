@@ -95,6 +95,7 @@ public sealed class SettingsStore
         settings.Validate();
         // JsonSerializer constructs dictionaries with its own comparer; restore Windows identity semantics.
         settings.ManualSampleRatesHz = new Dictionary<string, int>(settings.ManualSampleRatesHz, StringComparer.OrdinalIgnoreCase);
+        settings.ManualBitDepths = new Dictionary<string, int>(settings.ManualBitDepths, StringComparer.OrdinalIgnoreCase);
         settings.FavoriteSources = settings.FavoriteSources.ToDictionary(
             entry => SourceIdentity.FromExecutablePath(entry.Key), entry => entry.Value, StringComparer.OrdinalIgnoreCase);
         settings.PinnedSources = settings.PinnedSources.ToDictionary(

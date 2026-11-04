@@ -21,16 +21,16 @@ public sealed class SourcePopupFavoritesTests
         popup.RateSelected += _ => events.Add("rate");
         popup.SourceSelected += _ => events.Add("source");
         Render(popup, settings, [source]);
-        Click(Find<Button>(popup).Single(button => button.AccessibleName == "Pin master"));
+        Click(Find<Button>(popup).Single(button => button.AccessibleName == "Pin selected source"));
         Assert.Equal(new[] { "pin" }, events);
         settings.SetPinned(source.Identity, source.ProcessName, true);
         Render(popup, settings, []);
         Assert.Equal("◆ Pinned", Assert.Single(Rows(popup)).Text);
         Assert.Equal("No session", Assert.Single(Rows(popup)).SubItems[1].Text);
-        Assert.True(Find<Button>(popup).Single(button => button.AccessibleName == "Unpin master").Enabled);
+        Assert.True(Find<Button>(popup).Single(button => button.AccessibleName == "Unpin selected source").Enabled);
         Assert.Equal(new[] { "pin" }, events);
         Render(popup, settings, [], applying: true);
-        Assert.False(Find<Button>(popup).Single(button => button.AccessibleName == "Unpin master").Enabled);
+        Assert.False(Find<Button>(popup).Single(button => button.AccessibleName == "Unpin selected source").Enabled);
     });
 
     [Fact]
@@ -43,8 +43,8 @@ public sealed class SourcePopupFavoritesTests
         settings.SetFavorite(source.Identity, source.ProcessName, true);
         Render(popup, settings, [source]);
         Assert.Equal("★ Music", Assert.Single(Rows(popup)).Text);
-        Assert.Equal("Unfavorite master", FavoriteButton(popup).AccessibleName);
-        Assert.Contains(Find<Button>(popup), button => button.AccessibleName == "Unpin master");
+        Assert.Equal("Unfavorite selected source", FavoriteButton(popup).AccessibleName);
+        Assert.Contains(Find<Button>(popup), button => button.AccessibleName == "Unpin selected source");
         settings.SetFavorite(source.Identity, source.ProcessName, false);
         Render(popup, settings, [source]);
         Assert.Equal("◆ Music", Assert.Single(Rows(popup)).Text);
@@ -73,12 +73,12 @@ public sealed class SourcePopupFavoritesTests
         Assert.Equal(source.Identity, settings.SelectedSourceKey);
         Assert.Equal("★ Music", Assert.Single(Rows(popup)).Text);
         Assert.Equal("No session", Assert.Single(Rows(popup)).SubItems[1].Text);
-        Assert.Equal("Unfavorite master", FavoriteButton(popup).AccessibleName);
+        Assert.Equal("Unfavorite selected source", FavoriteButton(popup).AccessibleName);
         Assert.Equal(680, popup.ClientSize.Width);
     });
 
     [Fact]
-    public void Favorite_button_requests_only_bookmark_toggle_for_current_master() => OnSta(() =>
+    public void Favorite_button_requests_only_bookmark_toggle_for_highlighted_source() => OnSta(() =>
     {
         using var popup = new SourcePopup();
         var source = Source("Music");
@@ -118,19 +118,19 @@ public sealed class SourcePopupFavoritesTests
         popup.FavoriteChanged += (_, _, add) => requests.Add(add);
         Render(popup, settings, [source]);
         Assert.Equal("Music", Assert.Single(Rows(popup)).Text);
-        Assert.Equal("Favorite master", FavoriteButton(popup).AccessibleName);
+        Assert.Equal("Favorite selected source", FavoriteButton(popup).AccessibleName);
         settings.SetFavorite(source.Identity, source.ProcessName, true);
 
         Render(popup, settings, [source]);
         Click(FavoriteButton(popup));
 
         Assert.Equal("★ Music", Assert.Single(Rows(popup)).Text);
-        Assert.Equal("Unfavorite master", FavoriteButton(popup).AccessibleName);
+        Assert.Equal("Unfavorite selected source", FavoriteButton(popup).AccessibleName);
         Assert.False(Assert.Single(requests));
         settings.SetFavorite(source.Identity, source.ProcessName, false);
         Render(popup, settings, [source]);
         Assert.Equal("Music", Assert.Single(Rows(popup)).Text);
-        Assert.Equal("Favorite master", FavoriteButton(popup).AccessibleName);
+        Assert.Equal("Favorite selected source", FavoriteButton(popup).AccessibleName);
     });
 
     [Fact]
@@ -168,6 +168,8 @@ public sealed class SourcePopupFavoritesTests
         Render(popup, settings, [master]);
 
         SelectRow(popup, "★ Video");
+        Assert.Empty(live);
+        ActivateRow(popup);
 
         Assert.Empty(live);
         Assert.Equal((favorite.Identity, favorite.ProcessName), Assert.Single(saved));
@@ -189,9 +191,38 @@ public sealed class SourcePopupFavoritesTests
         Render(popup, settings, [master, favorite]);
 
         SelectRow(popup, "★ Video");
+        Assert.Empty(live);
+        ActivateRow(popup);
 
         Assert.Same(favorite, Assert.Single(live));
         Assert.Equal(0, saved);
+    });
+
+    [Fact]
+    public void Highlighted_nonmaster_can_be_favorited_and_pinned_without_activating_it() => OnSta(() =>
+    {
+        using var popup = new SourcePopup();
+        var master = Source("Music");
+        var other = Source("Video");
+        var settings = Settings(master);
+        var favorites = new List<string>();
+        var pins = new List<string>();
+        var selections = new List<PlatformAudioSource>();
+        popup.FavoriteChanged += (key, _, _) => favorites.Add(key);
+        popup.PinChanged += (key, _, _) => pins.Add(key);
+        popup.SourceSelected += selections.Add;
+        Render(popup, settings, [master, other]);
+        SelectRow(popup, "Video");
+        Click(FavoriteButton(popup));
+        settings.SetFavorite(other.Identity, other.ProcessName, true);
+        Render(popup, settings, [master, other]);
+        Click(Find<Button>(popup).Single(button => button.AccessibleName == "Pin selected source"));
+        Assert.Equal([other.Identity], favorites);
+        Assert.Equal([other.Identity], pins);
+        Assert.Empty(selections);
+        Assert.Equal(master.Identity, settings.SelectedSourceKey);
+        ActivateRow(popup);
+        Assert.Same(other, Assert.Single(selections));
     });
 
     [Theory]
@@ -249,7 +280,7 @@ public sealed class SourcePopupFavoritesTests
         Render(popup, settings, []);
 
         Assert.True(FavoriteButton(popup).Enabled);
-        Assert.Equal("Unfavorite master", FavoriteButton(popup).AccessibleName);
+        Assert.Equal("Unfavorite selected source", FavoriteButton(popup).AccessibleName);
     });
 
     [Fact]
@@ -285,7 +316,7 @@ public sealed class SourcePopupFavoritesTests
     private static void Render(SourcePopup popup, SourceSettings settings, IReadOnlyList<PlatformAudioSource> sources,
         bool applying = false) => popup.Render([], sources, [], null, settings, "Status", "Evidence", applying);
     private static Button FavoriteButton(SourcePopup popup) => Find<Button>(popup)
-        .Single(button => button.AccessibleName is "Favorite master" or "Unfavorite master");
+        .Single(button => button.AccessibleName is "Favorite selected source" or "Unfavorite selected source");
     private static ListViewItem[] Rows(SourcePopup popup) => Find<ListView>(popup).Single(list => list.AccessibleName == "Audio sources; star marks favorites").Items.Cast<ListViewItem>().ToArray();
     private static void Click(Button button) => typeof(Button).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!
         .Invoke(button, [EventArgs.Empty]);
@@ -298,6 +329,13 @@ public sealed class SourcePopupFavoritesTests
         _ = list.Handle;
         list.SelectedIndices.Clear();
         list.Items.Cast<ListViewItem>().Single(item => item.Text == name).Selected = true;
+    }
+
+    private static void ActivateRow(SourcePopup popup)
+    {
+        var list = Find<ListView>(popup).Single(value => value.AccessibleName == "Audio sources; star marks favorites");
+        typeof(ListView).GetMethod("OnItemActivate", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(list, [EventArgs.Empty]);
     }
 
     private static IEnumerable<T> Find<T>(Control control) where T : Control =>

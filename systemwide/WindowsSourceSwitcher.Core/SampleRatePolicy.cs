@@ -41,7 +41,7 @@ public enum RateDecisionReason
 }
 
 public sealed record RateDecision(int? DesiredSampleRateHz, RateDecisionReason Reason, string Detail,
-    int? DesiredBitsPerSample = null);
+    int? DesiredBitsPerSample = null, bool ManualBitDepth = false);
 
 /// <summary>Pure selection policy: endpoint calls and remembering successful changes belong to the host.</summary>
 public static class SampleRatePolicy
@@ -59,10 +59,16 @@ public static class SampleRatePolicy
         if (settings.SelectedSourceKey is not { } selected)
             return new(null, RateDecisionReason.NoMasterSelected, "Select an application to control the endpoint sample rate.");
 
+        var depthOverride = settings.FollowSourceBitDepth
+            ? settings.ManualBitDepths.FirstOrDefault(item => KeysEqual(item.Key, selected)) : default;
+        RateDecision WithDepth(RateDecision decision, int? observed = null) => depthOverride.Key is not null
+            ? decision with { DesiredBitsPerSample = depthOverride.Value, ManualBitDepth = true }
+            : decision with { DesiredBitsPerSample = settings.FollowSourceBitDepth ? observed : null };
+
         // Explicit user input applies even if the selected app is paused or has not restarted yet.
         var manual = settings.ManualSampleRatesHz.FirstOrDefault(item => KeysEqual(item.Key, selected));
         if (manual.Key is not null)
-            return new(manual.Value, RateDecisionReason.ManualOverride, "Using the selected application's manual sample-rate override.");
+            return WithDepth(new(manual.Value, RateDecisionReason.ManualOverride, "Using the selected application's manual sample-rate override."));
 
         var held = KeysEqual(settings.LastKnownSourceKey, selected) ? settings.LastKnownSampleRateHz : null;
         var current = sources.Where(source => KeysEqual(source.Key, selected)).ToArray();
@@ -90,7 +96,7 @@ public static class SampleRatePolicy
 
         if (verifiedRates.Length > 0)
             return verifiedRates.Length == 1
-                ? new(verifiedRates[0], RateDecisionReason.VerifiedNative, "Using a verified native rate from the selected application's current sessions.")
+                ? WithDepth(new(verifiedRates[0], RateDecisionReason.VerifiedNative, "Using a verified native rate from the selected application's current sessions."))
                 : new(held, RateDecisionReason.ConflictingObservations, "Selected application reports conflicting native rates; use a manual override.");
 
         var browserRates = settings.BrowserRateDetectionEnabled
@@ -99,7 +105,7 @@ public static class SampleRatePolicy
             : [];
         if (browserRates.Length > 0)
             return browserRates.Length == 1
-                ? new(browserRates[0], RateDecisionReason.BrowserDecoder, "Following the linked tab's media rate; the browser may resample its output.")
+                ? WithDepth(new(browserRates[0], RateDecisionReason.BrowserDecoder, "Following the linked tab's media rate; the browser may resample its output."))
                 : new(held, RateDecisionReason.ConflictingObservations, "Pinned browser tab reports conflicting decoder rates; holding output.");
 
         // Apple Music may keep a fixed Windows PCM rate across hi-res tracks.
@@ -112,7 +118,7 @@ public static class SampleRatePolicy
             var appleRates = appleFormats.Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray();
             return appleRates.Length switch
             {
-                1 => new(appleRates[0], RateDecisionReason.CatalogMetadata, "Following the opted-in Apple Music catalog estimate for this track; the actual delivered asset is unverified.",
+                1 => WithDepth(new(appleRates[0], RateDecisionReason.CatalogMetadata, "Following the opted-in Apple Music catalog estimate for this track; the actual delivered asset is unverified."),
                     settings.FollowSourceBitDepth ? AgreeOnBitDepth(appleFormats) : null),
                 > 1 => new(held, RateDecisionReason.ConflictingObservations, "Apple Music track metadata is conflicting; retaining the confirmed rate."),
                 _ => new(held, RateDecisionReason.NativeRateUnknown, "Apple Music track estimate is pending or unavailable; holding output. Its Windows PCM stream can remain fixed across tracks.")
@@ -124,11 +130,17 @@ public static class SampleRatePolicy
                 .ToArray()
             : [];
         var streamRates = streams.Select(observation => observation.SampleRateHz!.Value).Distinct().ToArray();
-        if (streamRates.Length > 0)
-            return streamRates.Length == 1
-                ? new(streamRates[0], RateDecisionReason.WasapiStream, "Following the selected app's observed WASAPI PCM stream rate; the app may have resampled its original media.",
-                    settings.FollowSourceBitDepth ? AgreeOnBitDepth(streams) : null)
-                : new(held, RateDecisionReason.ConflictingObservations, "Selected app has different simultaneous stream rates; retaining its last confirmed rate.");
+        if (streamRates.Length > 1)
+            return new(held, RateDecisionReason.ConflictingObservations, "Selected app has different simultaneous stream rates; retaining its last confirmed rate.");
+        if (streamRates.Length == 1)
+        {
+            var bits = settings.FollowSourceBitDepth ? AgreeOnBitDepth(streams) : null;
+            var spotifyWidth = bits == 32 && source.ExecutablePath.Replace('/', '\\').EndsWith("\\Spotify.exe", StringComparison.OrdinalIgnoreCase);
+            var detail = spotifyWidth && depthOverride.Key is null
+                ? "Following Spotify's Windows stream rate. Its 32-bit stream does not establish the track's depth. Choose a master bit-depth override if known."
+                : "Following the selected app's observed WASAPI PCM stream rate; the app may have resampled its original media.";
+            return WithDepth(new(streamRates[0], RateDecisionReason.WasapiStream, detail), spotifyWidth ? null : bits);
+        }
 
         var catalogRates = settings.CatalogRateDetectionEnabled
             ? eligibleObservations.Where(observation => observation.Provenance == RateProvenance.CatalogMetadata)
@@ -137,7 +149,7 @@ public static class SampleRatePolicy
 
         return catalogRates.Length switch
         {
-            1 => new(catalogRates[0], RateDecisionReason.CatalogMetadata, "Using an opted-in catalog rate estimate; this does not verify the application's actual stream rate."),
+            1 => WithDepth(new(catalogRates[0], RateDecisionReason.CatalogMetadata, "Using an opted-in catalog rate estimate; this does not verify the application's actual stream rate.")),
             > 1 => new(held, RateDecisionReason.ConflictingObservations, "Selected application has conflicting catalog rate estimates; use a manual override."),
             _ => new(held, RateDecisionReason.NativeRateUnknown, "Native rate is not observable; retaining the last confirmed rate. Set a manual override to choose a rate.")
         };
