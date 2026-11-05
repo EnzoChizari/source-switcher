@@ -46,6 +46,76 @@ public sealed class AppleMusicSwitchGuardTests
         Assert.True(result.WaitingForSignal);
         Assert.Equal(AppleMusicSwitchGuard.StartupTimeout, clock.Elapsed);
     }
+    [Fact]
+    public async Task SilentAdvancingPlayerCanRaiseDepthAndReseekOnceAfterReadback()
+    {
+        var clock = new Clock();
+        var session = new Session { AcceptReseek = true };
+        var writes = 0;
+        var readbackPublished = false;
+        session.OnReseek = () => Assert.True(readbackPublished);
+        var result = await clock.Guard.RunAsync(session, () => true, () => true,
+            () => session.Reseeks > 0 ? .1f : 0f,
+            () => { writes++; return Applied; }, default, () => readbackPublished = true,
+            allowSilentDepthIncrease: true);
+        Assert.Equal(1, writes);
+        Assert.Equal(1, session.Reseeks);
+        Assert.True(result.PlaybackObserved);
+    }
+
+    [Theory]
+    [InlineData(false, 0f, true)]
+    [InlineData(true, 0.0001f, true)]
+    [InlineData(true, 0f, false)]
+    public async Task ColdRaiseStillNeedsMeasurableZeroOnAnActiveAdvancingTrack(bool active, float peak, bool advances)
+    {
+        var session = new Session { Advance = advances };
+        var result = await new Clock().Guard.RunAsync(session, () => true, () => active, () => peak,
+            MustNotWrite, default, allowSilentDepthIncrease: true);
+        Assert.True(result.WaitingForSignal);
+        Assert.Equal(0, session.Reseeks);
+    }
+
+    [Fact]
+    public async Task FailedFormatWriteNeverReseeks()
+    {
+        var session = new Session();
+        var result = await new Clock().Guard.RunAsync(session, () => true, () => true, () => 0f,
+            () => new(false, false, "Rejected"), default, allowSilentDepthIncrease: true);
+        Assert.False(result.Applied?.Success);
+        Assert.Equal(0, session.Reseeks);
+    }
+
+    [Fact]
+    public async Task SilentRaiseThatRestoresAudioDoesNotReseek()
+    {
+        var session = new Session();
+        var wrote = false;
+        var result = await new Clock().Guard.RunAsync(session, () => true, () => true, () => wrote ? .1f : 0f,
+            () => { wrote = true; return Applied; }, default, allowSilentDepthIncrease: true);
+        Assert.True(result.PlaybackObserved);
+        Assert.Equal(0, session.Reseeks);
+    }
+
+    [Fact]
+    public async Task AlreadyAppliedFormatDoesNotTriggerReseek()
+    {
+        var session = new Session();
+        var result = await new Clock().Guard.RunAsync(session, () => true, () => true, () => 0f,
+            () => Applied with { Changed = false }, default, allowSilentDepthIncrease: true);
+        Assert.False(result.PlaybackObserved);
+        Assert.Equal(0, session.Reseeks);
+    }
+
+    [Fact]
+    public async Task RejectedReseekIsNeverRepeated()
+    {
+        var session = new Session();
+        var result = await new Clock().Guard.RunAsync(session, () => true, () => true, () => 0f,
+            () => Applied, default, allowSilentDepthIncrease: true);
+        Assert.False(result.PlaybackObserved);
+        Assert.Equal(1, session.Reseeks);
+    }
     [Theory]
     [InlineData("track")]
     [InlineData("session")]
@@ -140,18 +210,29 @@ public sealed class AppleMusicSwitchGuardTests
         public Clock(Action<TimeSpan>? advance = null) => Guard = new((value, _) =>
         { Elapsed += value; advance?.Invoke(Elapsed); return Task.CompletedTask; }, () => Elapsed);
     }
-    // No transport methods exist: this guard cannot pause/play/seek/restart a user player.
     private sealed class Session : IAppleSwitchSession
     {
         public string Key = "track";
         public bool Attached = true, Advance = true;
         public MediaTransportPlaybackStatus Status = MediaTransportPlaybackStatus.Playing;
         public TimeSpan Position;
+        public int Reseeks;
+        public bool AcceptReseek;
+        public Action? OnReseek;
         public Task<AppleSwitchState?> ReadAsync(CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
             if (Advance) Position += TimeSpan.FromMilliseconds(100);
             return Task.FromResult(Attached ? new AppleSwitchState(Key, Status, Position) : null);
+        }
+        public Task<bool> TryReseekAsync(AppleSwitchState state, Func<bool> contextCurrent, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            Assert.True(contextCurrent());
+            Assert.Equal(Key, state.TrackKey);
+            Reseeks++;
+            OnReseek?.Invoke();
+            return Task.FromResult(AcceptReseek);
         }
     }
 }

@@ -1,5 +1,10 @@
 # Source Switcher changelog
 
+## v1.4.3
+
+- Apple Music can raise the output bit depth when its current track is advancing but its active audio session stays silent. If silence persists after the change, Source Switcher can ask Apple Music once to reload its current playback position.
+- A manual Apple Music bit depth can apply at the current output rate while the player is paused or track format evidence is unavailable.
+
 ## v1.4.2
 
 - Automatic handoffs hold the selected output format while Apple Music is still playing through that output.

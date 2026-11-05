@@ -1056,6 +1056,10 @@ internal sealed class TrayContext : ApplicationContext
             var observations = _streamObservations.Values.Concat(new[] { _observation, appleReported, _browserObservation, playerObservation }.OfType<RateObservation>()).ToArray();
             var decision = BrowserSourcePolicy.HoldIfRequired(_settings, browser, _browserObservation,
                 SampleRatePolicy.Evaluate(_settings, sources, observations));
+            var appleDepthOnly = appleSource is not null && snapshot.Current is { } currentOutput
+                ? AppleMusicFormatPolicy.ManualDepthAtCurrentRate(_settings, decision, currentOutput.SampleRateHz) : null;
+            decision = appleDepthOnly ?? decision;
+            var guardAppleWrite = appleSource is not null && appleDepthOnly is null;
             _lastDecision = decision;
             if (decision.Reason == RateDecisionReason.WasapiStream
                 && _streamMonitor?.IsEvidenceCurrent(observedStreamVersion) != true)
@@ -1155,7 +1159,8 @@ internal sealed class TrayContext : ApplicationContext
                 return;
             }
             if (_failedKey == key) { _status = _appleSwitchFailureKey == key ? _appleSwitchDetail : "Switch failed. Check exclusive playback / device availability, then Refresh / retry. See switcher.log for details."; return; }
-            var appleSignalKey = appleSource is null ? null : $"{endpointId}|{selectedKey}|{selectedRevision}";
+            var allowSilentDepthIncrease = guardAppleWrite && target.BitsPerSample > snapshot.Current.BitDepth;
+            var appleSignalKey = !guardAppleWrite ? null : $"{key}|{appleSource!.SessionToken}|{appleTrack?.Generation}";
             var waitingForAppleSignal = appleSignalKey is not null && _appleWaitingForSignalKey == appleSignalKey;
             if (waitingForAppleSignal && System.Diagnostics.Stopwatch.GetElapsedTime(_appleSignalWaitStarted) < TimeSpan.FromSeconds(1))
             {
@@ -1169,7 +1174,7 @@ internal sealed class TrayContext : ApplicationContext
                 // Apple has its own same-track/live-signal preflight below.
                 // Its evidence is revalidated immediately before the write, so an
                 // additional sequential 180 ms timer only delays the same decision.
-                if (appleSource is null)
+                if (!guardAppleWrite)
                 {
                     _status = "Waiting for a stable rate selection…";
                     _stabilityTimer.Interval = 180;
@@ -1177,7 +1182,7 @@ internal sealed class TrayContext : ApplicationContext
                     return;
                 }
             }
-            if (appleSource is null && System.Diagnostics.Stopwatch.GetElapsedTime(_candidateSince) < TimeSpan.FromMilliseconds(180))
+            if (!guardAppleWrite && System.Diagnostics.Stopwatch.GetElapsedTime(_candidateSince) < TimeSpan.FromMilliseconds(180))
             {
                 _stabilityTimer.Interval = 180;
                 _stabilityTimer.Start();
@@ -1196,11 +1201,11 @@ internal sealed class TrayContext : ApplicationContext
             }
             // One operation at a time. Disable source/device edits while the uncancellable Windows
             // call is in flight; the next poll still verifies the pinned endpoint and current source.
-            _applying = appleSource is null;
+            _applying = !guardAppleWrite;
             var formatOperation = ++_formatOperationGeneration;
             RecordSessionContinuity(_sessionContinuity.Cancel());
             _status = $"Applying {formatLabel}… Apps may briefly restart their shared streams.";
-            if (appleSource is not null)
+            if (guardAppleWrite)
                 _status = waitingForAppleSignal ? AppleMusicSwitchGuard.WaitingForSignalStatus : "Checking for live Apple Music audio…";
             Render();
             AppleSwitchResult? appleSwitch = null;
@@ -1230,7 +1235,7 @@ internal sealed class TrayContext : ApplicationContext
                 if (decision.Reason == RateDecisionReason.CatalogMetadata
                     && (selectedKey is null || catalogSession is null
                         || _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) != true)) return null;
-                if (appleSource is null)
+                if (!guardAppleWrite)
                     return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits, decision.ManualBitDepth, preventDepthReduction);
 
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_appleSwitchLifetime.Token);
@@ -1299,7 +1304,7 @@ internal sealed class TrayContext : ApplicationContext
                                     formatOperation, ContextCurrent, device, mix)));
                             }
                             catch (InvalidOperationException) { /* Closing or recreating the owned window. */ }
-                        }).ConfigureAwait(false);
+                        }, allowSilentDepthIncrease).ConfigureAwait(false);
                 return appleSwitch.Applied;
             });
             if (appleSwitch is not null)

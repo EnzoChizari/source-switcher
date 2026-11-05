@@ -8,6 +8,39 @@ namespace WindowsSourceSwitcher.Tray.Tests;
 public sealed class AppleMusicQualityTests
 {
     [Theory]
+    [InlineData(RateDecisionReason.SourcePaused)]
+    [InlineData(RateDecisionReason.NativeRateUnknown)]
+    public void AppleManualDepthKeepsCurrentRateWhenTrackRateIsUnavailable(RateDecisionReason reason)
+    {
+        const string apple = @"C:\Program Files\WindowsApps\AppleInc.AppleMusicWin_1.1540.23042.0_x64__nzyj5cx40ttqa\AppleMusic.exe";
+        SourceSettings settings = new() { FollowSourceBitDepth = true };
+        settings.SelectMaster(apple, "Apple Music");
+        settings.ManualBitDepths[apple] = 32;
+        RateDecision held = new(192000, reason, "Last confirmed rate");
+        var applied = AppleMusicFormatPolicy.ManualDepthAtCurrentRate(settings, held, 48000);
+        Assert.Equal(48000, applied?.DesiredSampleRateHz);
+        Assert.Equal(32, applied?.DesiredBitsPerSample);
+        Assert.True(applied?.ManualBitDepth);
+        Assert.Null(AppleMusicFormatPolicy.ManualDepthAtCurrentRate(settings, held with { Reason = RateDecisionReason.PlayerMetadata }, 48000));
+        Assert.Null(AppleMusicFormatPolicy.ManualDepthAtCurrentRate(settings, held with { Reason = RateDecisionReason.SourceUnavailable }, 48000));
+        settings.FollowSourceBitDepth = false;
+        Assert.Null(AppleMusicFormatPolicy.ManualDepthAtCurrentRate(settings, held, 48000));
+    }
+
+    [Theory]
+    [InlineData("Spotify.exe")]
+    [InlineData("Discord.exe")]
+    public void OtherPlayersDoNotUseAppleManualDepthRecovery(string executable)
+    {
+        var path = @"C:\Apps\" + executable;
+        SourceSettings settings = new() { FollowSourceBitDepth = true };
+        settings.SelectMaster(path, executable);
+        settings.ManualBitDepths[path] = 32;
+        Assert.Null(AppleMusicFormatPolicy.ManualDepthAtCurrentRate(settings,
+            new(null, RateDecisionReason.SourcePaused, ""), 48000));
+    }
+
+    [Theory]
     [InlineData("24-bit 44.1 kHz ALAC", 44100, 24)]
     [InlineData("24‑bit 88,2 kHz ALAC", 88200, 24)]
     [InlineData("24-bit 192 kHz ALAC", 192000, 24)]

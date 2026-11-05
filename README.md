@@ -57,6 +57,8 @@ For a Kodik player embedded in Animelib, click **Enable embedded Kodik players**
 
 For Apple Music, enable **Use Apple Music track format (catalog fallback)** and open the **Lossless** or **Hi-Res Lossless** badge in Apple Music. Source Switcher reads supported ALAC labels from the visible panel and associates them with the current title, artist, and album. With **Follow source bit depth (experimental)** enabled, Apple Music can raise the Windows output depth when supported. A label with only a sample rate keeps the current output depth. Automatic handoffs hold the current output format while Apple Music is playing through it.
 
+If an active Apple Music session stays silent while the track advances, Source Switcher can still apply a supported increase in output depth. If silence continues after Windows confirms the new format, the app can request one seek to the current playback position. A manual Apple Music depth uses the current output rate while the player is paused or the track rate is unavailable.
+
 For Spotify, enable **Follow source bit depth (experimental)**, make Spotify the master, and click the **Lossless** badge in Spotify's player to open **File quality** for **This computer**. Keep the card open while listening. The reader supports the English 16- and 24-bit FLAC labels. Auto holds the output depth when the card is closed, the window is minimized, or the labels are unavailable.
 
 ### Connect Fooyin track metadata
