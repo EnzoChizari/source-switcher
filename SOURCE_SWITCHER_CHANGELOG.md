@@ -1,5 +1,9 @@
 # Source Switcher changelog
 
+## v1.4.9
+
+- Automatic Apple Music identification can run during the favorite handoff delay, before Apple Music becomes master.
+
 ## v1.4.8
 
 - If Apple Music's track display is still updating, identification retries briefly within the current transition instead of waiting for a periodic refresh.

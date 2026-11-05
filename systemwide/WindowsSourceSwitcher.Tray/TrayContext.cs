@@ -1028,8 +1028,12 @@ internal sealed class TrayContext : ApplicationContext
                     _streamCensusTask = RefreshStreamCensusAsync(streamMonitor);
                 // Apple track decisions use the player or catalog monitor, independently
                 // of the existing-stream trace. Other masters still await fresh evidence.
-                if (!_settings.CatalogRateDetectionEnabled || !snapshot.Sources.Any(source =>
-                    source.SupportsAutomaticRate && source.Identity == _settings.SelectedSourceKey))
+                var appleTrackCanLead = _settings.CatalogRateDetectionEnabled && snapshot.Sources.Any(source =>
+                    source.SupportsAutomaticRate && (source.Identity == _settings.SelectedSourceKey
+                        || _settings.AppleMusicAutoReadQuality && _settings.FavoriteAutoSwitchEnabled
+                            && _playback.Snapshot.AppleMusicPlayback == FavoritePlaybackState.Playing
+                            && _settings.IsFavorite(source.Identity)));
+                if (!appleTrackCanLead)
                     await _streamCensusTask;
             }
             if (_exiting || epoch != _epoch) return;
@@ -1049,8 +1053,10 @@ internal sealed class TrayContext : ApplicationContext
                 RequestRefresh(census: true);
                 return;
             }
-            if (TrySwitchFullscreen(snapshot)) return;
-            if (TrySwitchFavorite(snapshot, playbackSnapshot)) return;
+            var waitingForPriority = TrySwitchFullscreen(snapshot) || TrySwitchFavorite(snapshot, playbackSnapshot);
+            // A committed master change starts a new refresh. A pending handoff can
+            // overlap the read-only Apple track lookup instead of delaying it.
+            if (_exiting || epoch != _epoch) return;
 
             var browser = _browserBridge?.Snapshot ?? BrowserDecoderSnapshot.Empty;
             var playbackVersion = playbackSnapshot.Version;
@@ -1069,7 +1075,7 @@ internal sealed class TrayContext : ApplicationContext
             if (appleTrack is { } track && appleOnOutput is not null
                 && (_appleQuality is not { } cached || !ReferenceEquals(cached.Track, track.Track)
                     || cached.Generation != track.Generation || cached.Session != appleOnOutput.SessionToken)
-                && (appleSource is not null || _popup.Visible)
+                && (appleSource is not null || _popup.Visible || _settings.AppleMusicAutoReadQuality)
                 && (_lastAppleQualityRead is not { } lastRead || !ReferenceEquals(lastRead.Track, track.Track)
                     || System.Diagnostics.Stopwatch.GetElapsedTime(lastRead.Timestamp) >= TimeSpan.FromSeconds(1)
                     || lastRead.Retry && lastRead.Count < 3
@@ -1102,6 +1108,7 @@ internal sealed class TrayContext : ApplicationContext
                     return;
                 }
             }
+            if (waitingForPriority) return;
             var appleObservation = GetAppleQualityObservation(appleOnOutput);
             var appleReported = appleSource is not null ? appleObservation : null;
             var appleReportedEvidence = _appleQuality;
