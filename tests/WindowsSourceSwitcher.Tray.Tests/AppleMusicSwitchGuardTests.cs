@@ -116,6 +116,49 @@ public sealed class AppleMusicSwitchGuardTests
         Assert.False(result.PlaybackObserved);
         Assert.Equal(1, session.Reseeks);
     }
+
+    [Fact]
+    public async Task HealthySixteenBitPlaybackDoesNotUseCompatibilityDepth()
+    {
+        var result = await new Clock().Guard.RunAsync(new Session(), () => true, () => true, () => .1f,
+            () => Applied with { Changed = false }, default, recoverSilent: MustNotWrite);
+        Assert.True(result.PlaybackObserved);
+        Assert.False(result.Applied?.Changed);
+    }
+
+    [Fact]
+    public async Task SilentSixteenBitPlaybackUsesCompatibilityDepthInsteadOfTheNormalTarget()
+    {
+        var recovered = false;
+        var result = await new Clock().Guard.RunAsync(new Session(), () => true, () => true,
+            () => recovered ? .1f : 0f, MustNotWrite, default,
+            recoverSilent: () => { recovered = true; return Applied; });
+        Assert.True(result.PlaybackObserved);
+        Assert.True(recovered);
+    }
+
+    [Fact]
+    public async Task FailedDepthReductionRestoresOnceWhileTheOriginalTrackStillPlays()
+    {
+        var wrote = false;
+        var restores = 0;
+        var publications = 0;
+        var result = await new Clock().Guard.RunAsync(new Session(), () => true, () => true,
+            () => wrote ? 0f : .1f, () => { wrote = true; return Applied; }, default,
+            () => publications++, restorePrevious: () => { restores++; return Applied; });
+        Assert.True(result.Restoration?.Success);
+        Assert.Equal(1, restores);
+        Assert.Equal(2, publications);
+    }
+
+    [Fact]
+    public async Task LowerDepthThatRestoresSignalDoesNotRestoreTheOldFormat()
+    {
+        var result = await new Clock().Guard.RunAsync(new Session(), () => true, () => true, () => .1f,
+            () => Applied, default, restorePrevious: MustNotWrite);
+        Assert.True(result.PlaybackObserved);
+        Assert.Null(result.Restoration);
+    }
     [Theory]
     [InlineData("track")]
     [InlineData("session")]

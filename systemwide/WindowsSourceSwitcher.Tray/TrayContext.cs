@@ -38,6 +38,9 @@ internal sealed class TrayContext : ApplicationContext
     private long? _lastAppleQualityRead;
     private string _appleSwitchDetail = "Apple Music switches while rendering; signal and timeline recovery are checked.";
     private string? _appleSwitchFailureKey;
+    private (string Key, string Detail)? _appleRejectedReduction;
+    private string? _appleUnsafe16Endpoint;
+    private string? _appleChecked16Stream;
     private string? _appleWaitingForSignalKey;
     private long _appleSignalWaitStarted;
     private readonly FavoritePlaybackMonitor _playback = new();
@@ -236,6 +239,7 @@ internal sealed class TrayContext : ApplicationContext
         _popup.BitDepthSelected += bits => Change(() =>
         {
             if (_settings.SelectedSourceKey is not { } key) return;
+            if (AppleMusicIdentity.IsOfficialExecutable(key)) _appleRejectedReduction = null;
             if (bits is { } depth) _settings.ManualBitDepths[key] = depth;
             else _settings.ManualBitDepths.Remove(key);
         });
@@ -272,6 +276,8 @@ internal sealed class TrayContext : ApplicationContext
             _stabilityTimer.Interval = 180;
             _failedKey = _candidateKey = null;
             _appleWaitingForSignalKey = null;
+            _appleRejectedReduction = null;
+            _appleChecked16Stream = null;
             _stabilityTimer.Stop();
             _reprobe = true;
             _warning = null;
@@ -1105,13 +1111,36 @@ internal sealed class TrayContext : ApplicationContext
             }
             if (snapshot.Current is null || snapshot.Mix is null) { _status = "Cannot read the output format. Refresh to retry."; return; }
 
-            var sourceBits = decision.DesiredBitsPerSample;
-            var preventDepthReduction = appleSource is not null && !decision.ManualBitDepth;
-            if (snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
+            var trackBits = decision.DesiredBitsPerSample;
+            var currentFormat = new EndpointFormat(snapshot.Current.SampleRateHz, snapshot.Current.BitDepth, snapshot.Current.Channels);
+            var sourceFormatKnown = decision.Reason is RateDecisionReason.PlayerMetadata or RateDecisionReason.CatalogMetadata;
+            var useCompatible24 = appleSource is not null && sourceFormatKnown && !decision.ManualBitDepth && trackBits == 16
+                && _appleUnsafe16Endpoint == endpointId
+                && snapshot.Formats.Any(format => format.SampleRateHz == desired && format.BitDepth == 24
+                    && format.Channels == currentFormat.Channels);
+            var sourceBits = useCompatible24 ? 24 : trackBits;
+            var recoveryProbeKey = guardAppleWrite && currentFormat.BitsPerSample == 16 && !decision.ManualBitDepth
+                && _settings.FollowSourceBitDepth && sourceFormatKnown && sourceBits is null or 16 && appleTrack is not null
+                ? $"{endpointId}|{appleSource!.SessionToken}|{appleTrack.Value.Track.UniqueKey}|{desired}" : null;
+            var coldFallback = recoveryProbeKey is not null && recoveryProbeKey != _appleChecked16Stream
+                ? snapshot.Formats.Where(format => format.SampleRateHz == desired && format.Channels == currentFormat.Channels
+                    && format.BitDepth is 24 or 32).MinBy(format => format.BitDepth)
+                : null;
+            var automaticAppleReduction = appleSource is not null && appleTrack is not null && sourceBits is { } reportedDepth
+                && (reportedDepth != 16 || _appleUnsafe16Endpoint != endpointId)
+                && AppleMusicFormatPolicy.CanLowerAutomatically(decision with { DesiredBitsPerSample = sourceBits },
+                    currentFormat, new(desired, reportedDepth, currentFormat.Channels))
+                && snapshot.Formats.Any(format => format.SampleRateHz == desired && format.BitDepth == reportedDepth
+                    && format.Channels == currentFormat.Channels);
+            var requireExactDepth = decision.ManualBitDepth || automaticAppleReduction;
+            var preventDepthReduction = appleSource is not null && !requireExactDepth;
+            if (coldFallback is null && snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
                 && (sourceBits is null || snapshot.Current.BitDepth == sourceBits
                     || preventDepthReduction && snapshot.Current.BitDepth > sourceBits))
             {
-                if (preventDepthReduction && snapshot.Current.BitDepth > sourceBits)
+                if (useCompatible24)
+                    _status += $" Keeping {snapshot.Current.BitDepth}-bit output after Apple Music went silent at 16-bit.";
+                else if (preventDepthReduction && snapshot.Current.BitDepth > sourceBits)
                     _status += $" Keeping the current {snapshot.Current.BitDepth}-bit output.";
                 _failedKey = _candidateKey = null;
                 await RememberAsync(desired);
@@ -1119,9 +1148,9 @@ internal sealed class TrayContext : ApplicationContext
             }
 
             var target = EndpointFormatPolicy.SelectExact(
-                new(snapshot.Current.SampleRateHz, snapshot.Current.BitDepth, snapshot.Current.Channels),
+                currentFormat,
                 snapshot.Formats.Select(f => new EndpointFormat(f.SampleRateHz, f.BitDepth, f.Channels)), desired,
-                sourceBits, decision.ManualBitDepth, preventDepthReduction);
+                sourceBits, requireExactDepth, preventDepthReduction);
             if (target is null)
             {
                 _status = decision.ManualBitDepth
@@ -1139,9 +1168,9 @@ internal sealed class TrayContext : ApplicationContext
                 RateDecisionReason.PlayerMetadata => spotifyQuality is null ? "Fooyin track metadata" : "Spotify File quality",
                 _ => "Submitted PCM"
             };
-            var depthFallback = sourceBits is { } bits && bits != target.BitsPerSample
+            var depthFallback = trackBits is { } bits && bits != target.BitsPerSample
                 ? $" {depthEvidence} is {bits}-bit. Output uses {target.BitsPerSample}-bit at this rate." : "";
-            if (snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
+            if (coldFallback is null && snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
                 && snapshot.Current.BitDepth == target.BitsPerSample)
             {
                 _status += depthFallback;
@@ -1150,6 +1179,13 @@ internal sealed class TrayContext : ApplicationContext
                 return;
             }
             var key = $"{endpointId}|{_settings.SelectedSourceKey}|{desired}|{sourceBits}|{target.BitsPerSample}|{snapshot.Current.BitDepth}|{snapshot.Current.Channels}|{_settings.SelectionRevision}";
+            var appleReductionKey = automaticAppleReduction
+                ? $"{endpointId}|{selectedKey}|{appleTrack!.Value.Track.UniqueKey}|{desired}|{sourceBits}" : null;
+            if (appleReductionKey is not null && _appleRejectedReduction is { } rejected && rejected.Key == appleReductionKey)
+            {
+                _status = rejected.Detail;
+                return;
+            }
             if (appleSource is null && _automaticSelectionRevision == selectedRevision && protectApplePlayback
                 && decision.Reason != RateDecisionReason.ManualOverride && !decision.ManualBitDepth)
             {
@@ -1209,6 +1245,7 @@ internal sealed class TrayContext : ApplicationContext
                 _status = waitingForAppleSignal ? AppleMusicSwitchGuard.WaitingForSignalStatus : "Checking for live Apple Music audio…";
             Render();
             AppleSwitchResult? appleSwitch = null;
+            var usedAppleFallback = false;
             var appleContextCurrent = appleSource is null ? null : CreateAppleSwitchContext(endpointId, selectedKey!, selectedRevision);
             bool AppleReportedEvidenceCurrent() => appleSource is not null && appleReportedEvidence is { } reported
                 && _monitor?.IsEvidenceCurrent(reported.Generation, appleSource.Identity, appleSource.SessionToken, 0, reported.Track) == true;
@@ -1236,7 +1273,7 @@ internal sealed class TrayContext : ApplicationContext
                     && (selectedKey is null || catalogSession is null
                         || _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) != true)) return null;
                 if (!guardAppleWrite)
-                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits, decision.ManualBitDepth, preventDepthReduction);
+                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits, requireExactDepth, preventDepthReduction);
 
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_appleSwitchLifetime.Token);
                 deadline.CancelAfter(TimeSpan.FromSeconds(9));
@@ -1269,23 +1306,42 @@ internal sealed class TrayContext : ApplicationContext
                         && (decision.Reason != RateDecisionReason.CatalogMetadata || selectedKey is not null && catalogSession is not null
                             && _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) == true);
                 }
-                ApplyResult? ApplyApple()
+                bool BeginAppleWrite(Func<bool> ready, string message)
                 {
-                    if (!AppleEvidenceCurrent()) return null;
+                    if (!ready()) return false;
                     try
                     {
-                        // Preflight is read-only. Disable the controls only when a write is imminent.
                         _popup.Invoke(new Action(() =>
                         {
-                            if (!AppleEvidenceCurrent()) return;
+                            if (!ready()) return;
                             _applying = true;
-                            _status = $"Applying {formatLabel}…";
+                            _status = message;
                             Render();
                         }));
                     }
-                    catch (InvalidOperationException) { return null; }
-                    if (!_applying || !AppleEvidenceCurrent()) return null;
-                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits, decision.ManualBitDepth, preventDepthReduction);
+                    catch (InvalidOperationException) { return false; }
+                    return _applying && ready();
+                }
+                var adapter = new EndpointRateAdapter(_endpoint);
+                ApplyResult? ApplyApple() => BeginAppleWrite(AppleEvidenceCurrent, $"Applying {formatLabel}…")
+                    ? EndpointRateApplier.Apply(adapter, endpointId, desired, sourceBits, requireExactDepth, preventDepthReduction)
+                    : null;
+                ApplyResult? RecoverApple()
+                {
+                    if (!BeginAppleWrite(AppleEvidenceCurrent, "Raising the output depth to recover Apple Music…")
+                        || adapter.ReadDeviceFormat(endpointId) != currentFormat) return null;
+                    var recovered = EndpointRateApplier.Apply(adapter, endpointId, desired, coldFallback!.BitDepth, requireExactDepth: true);
+                    usedAppleFallback = recovered.Success && recovered.Changed;
+                    return recovered;
+                }
+                ApplyResult? RestoreApple()
+                {
+                    // Check the just-applied format before restoring to avoid undoing an external edit.
+                    if (adapter.ReadDeviceFormat(endpointId) != target
+                        || !BeginAppleWrite(ContextCurrent, "Restoring the previous output format…")
+                        || adapter.ReadDeviceFormat(endpointId) != target) return null;
+                    return EndpointRateApplier.Apply(adapter, endpointId, currentFormat.SampleRateHz,
+                        currentFormat.BitsPerSample, requireExactDepth: true);
                 }
                 using (session as IDisposable)
                     appleSwitch = await new AppleMusicSwitchGuard().RunAsync(session, ContextCurrent, () => live.Active,
@@ -1304,7 +1360,8 @@ internal sealed class TrayContext : ApplicationContext
                                     formatOperation, ContextCurrent, device, mix)));
                             }
                             catch (InvalidOperationException) { /* Closing or recreating the owned window. */ }
-                        }, allowSilentDepthIncrease).ConfigureAwait(false);
+                        }, allowSilentDepthIncrease, automaticAppleReduction ? RestoreApple : null,
+                        coldFallback is null ? null : RecoverApple).ConfigureAwait(false);
                 return appleSwitch.Applied;
             });
             if (appleSwitch is not null)
@@ -1318,6 +1375,23 @@ internal sealed class TrayContext : ApplicationContext
                     Log(_appleSwitchDetail);
                 }
             }
+            if (appleSwitch?.Restoration is { } restoration)
+            {
+                if (appleReductionKey is not null) _appleRejectedReduction = (appleReductionKey, appleSwitch.Detail);
+                if (target.BitsPerSample == 16 && restoration.Success) _appleUnsafe16Endpoint = endpointId;
+                _status = _appleSwitchDetail;
+                _formatThrottle.RecordAttempt(System.Diagnostics.Stopwatch.GetElapsedTime(_startedAt));
+                Log("Apple Music output restoration: " + restoration.Detail);
+                _refreshPending = _censusPending = true;
+                return;
+            }
+            if (coldFallback is not null && result is { Success: true, Changed: false })
+            {
+                _appleChecked16Stream = recoveryProbeKey;
+                await RememberAsync(desired);
+                return;
+            }
+            if (usedAppleFallback && appleSwitch?.PlaybackObserved == true) _appleUnsafe16Endpoint = endpointId;
             if (result is null)
             {
                 if (appleSwitch is not null)
@@ -1336,6 +1410,11 @@ internal sealed class TrayContext : ApplicationContext
             Log(_endpoint.GetLastApplyDiagnostics(endpointId) ?? "No device write diagnostics.");
             _failedKey = result.Success ? null : key;
             _appleSwitchFailureKey = null;
+            if (usedAppleFallback)
+            {
+                formatLabel = $"{SourcePopup.FormatRate(desired)} at {coldFallback!.BitDepth}-bit";
+                depthFallback = " Apple Music recovery used a higher output depth.";
+            }
             _status = result.Success ? $"Applied {formatLabel}. Other shared-mode apps use Windows resampling.{depthFallback}" : "Switch failed: " + result.Detail;
             if (result.Success && appleSwitch is { PlaybackObserved: false })
                 _status = $"Applied {formatLabel}.{depthFallback} " + appleSwitch.Detail;
@@ -1906,11 +1985,9 @@ internal sealed class TrayContext : ApplicationContext
             new("Follow bit depth", _settings.FollowSourceBitDepth
                 ? _lastDecision?.DesiredBitsPerSample is { } wantedBits
                     ? $"On · {wantedBits}-bit " + (_lastDecision.ManualBitDepth ? "manual override"
-                        : _lastDecision.Reason == RateDecisionReason.CatalogMetadata ? "catalog estimate · raise only"
+                        : _lastDecision.Reason == RateDecisionReason.CatalogMetadata ? "catalog estimate"
                         : _lastDecision.Reason == RateDecisionReason.BrowserDecoder ? "file header"
-                        : _lastDecision.Reason == RateDecisionReason.PlayerMetadata
-                            ? source?.SupportsAutomaticRate == true ? "player report · raise only" : "player metadata"
-                            : "submitted PCM")
+                        : _lastDecision.Reason == RateDecisionReason.PlayerMetadata ? "player metadata" : "submitted PCM")
                     : source?.SupportsAutomaticRate == true ? "On · keeping output depth for Apple Music"
                     : "On · keeping output depth until usable evidence"
                 : "Off · keep output depth"),

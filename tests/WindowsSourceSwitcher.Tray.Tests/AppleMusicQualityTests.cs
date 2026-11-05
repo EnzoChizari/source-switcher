@@ -41,6 +41,18 @@ public sealed class AppleMusicQualityTests
     }
 
     [Theory]
+    [InlineData(RateDecisionReason.PlayerMetadata, 16, true)]
+    [InlineData(RateDecisionReason.CatalogMetadata, 16, true)]
+    [InlineData(RateDecisionReason.CatalogMetadata, 24, true)]
+    [InlineData(RateDecisionReason.WasapiStream, 16, false)]
+    public void AppleCanTryExactTrackDepthButIgnoresSubmittedPcmForReductions(RateDecisionReason evidence, int bits, bool expected)
+    {
+        RateDecision decision = new(44100, evidence, "", bits);
+        Assert.Equal(expected, AppleMusicFormatPolicy.CanLowerAutomatically(decision, new(44100, 32, 2), new(44100, bits, 2)));
+        Assert.False(AppleMusicFormatPolicy.CanLowerAutomatically(decision, new(44100, 32, 2), new(44100, 32, 2)));
+    }
+
+    [Theory]
     [InlineData("24-bit 44.1 kHz ALAC", 44100, 24)]
     [InlineData("24‑bit 88,2 kHz ALAC", 88200, 24)]
     [InlineData("24-bit 192 kHz ALAC", 192000, 24)]
@@ -89,6 +101,8 @@ public sealed class AppleMusicQualityTests
             preventDepthReduction: true));
         Assert.Equal(RateDecisionReason.CatalogMetadata,
             SampleRatePolicy.Evaluate(settings, [apple.ToSnapshot()], [stream, catalog, report with { SessionToken = "old" }]).Reason);
+        Assert.Equal("192 kHz / 16-bit est.",
+            SourceRatePresentation.Describe(apple, settings, catalog with { BitsPerSample = 16 }).Text);
         var rateOnly = SampleRatePolicy.Evaluate(settings, [apple.ToSnapshot()], [stream, catalog, report with { BitsPerSample = null }]);
         Assert.Equal(44100, rateOnly.DesiredSampleRateHz);
         Assert.Null(rateOnly.DesiredBitsPerSample);

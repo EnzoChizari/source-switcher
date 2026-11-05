@@ -28,7 +28,8 @@ internal static class SourceRatePresentation
             // Track metadata is meaningful while paused as well. The monitor validates its
             // track/session identity separately; the write policy still requires playback.
             if (IsCurrentCatalogEstimate(source, settings, observation))
-                return new(FormatRate(observation!.SampleRateHz!.Value) + " est.",
+                return new(FormatRate(observation!.SampleRateHz!.Value)
+                    + (settings.FollowSourceBitDepth && observation.BitsPerSample is { } estimatedBits ? $" / {estimatedBits}-bit est." : " est."),
                     "Apple Music track estimate, independent of the master and mixer; delivered asset remains unverified."
                     + (settings.FollowSourceBitDepth && observation.BitsPerSample is { } depth ? $" Estimated depth is {depth}-bit." : "")
                     + (!source.IsActive || playback == FavoritePlaybackState.NotPlaying ? " Output held during pause." : ""), observation.Detail);

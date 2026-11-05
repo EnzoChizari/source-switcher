@@ -4,6 +4,13 @@ namespace WindowsSourceSwitcher.Tray.Audio;
 
 internal static class AppleMusicFormatPolicy
 {
+    internal static bool CanLowerAutomatically(RateDecision decision, EndpointFormat current, EndpointFormat target)
+    {
+        if (decision.ManualBitDepth || target.BitsPerSample >= current.BitsPerSample
+            || decision.DesiredBitsPerSample != target.BitsPerSample) return false;
+        return decision.Reason is RateDecisionReason.PlayerMetadata or RateDecisionReason.CatalogMetadata;
+    }
+
     internal static RateDecision? ManualDepthAtCurrentRate(SourceSettings settings, RateDecision decision, int currentRate)
     {
         if (!settings.SwitchingEnabled || !settings.FollowSourceBitDepth

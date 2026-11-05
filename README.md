@@ -44,20 +44,20 @@ For a Kodik player embedded in Animelib, click **Enable embedded Kodik players**
 
 **Format detection.** Source Switcher observes PCM streams submitted to Windows and uses supported formats for the selected shared-mode playback device. If the observation is missing, stale, ambiguous, or unsupported, it can hold the last confirmed format. Automatic rate detection uses Windows audio tracing and may require administrator elevation or appropriate tracing permissions.
 
-**Sample rate and bit depth are separate.** With catalog estimates enabled, Apple Music can raise the output depth in Auto and keeps the higher depth across tracks. Floating-point streams keep the current depth when the player provides no track format. A saved manual override lets you choose an exact depth.
+**Sample rate and bit depth are separate.** Apple Music Auto can try a supported track depth and restore the previous output if a reduction leaves playback silent. Floating-point streams keep the current depth when the player provides no track format. A saved manual override lets you choose an exact depth.
 
 | Source | What Auto depth follows |
 | --- | --- |
-| Apple Music | A higher depth from the open Lossless details or, when unavailable, an enabled catalog estimate. The output must support it. |
+| Apple Music | Depth from the open Lossless details or, when unavailable, an enabled catalog estimate. The output must support it. |
 | Chrome and Helium | Integer depth from a supported WAV or native FLAC header in the linked tab. |
 | Fooyin with Now Playing export | The active track's reported rate and depth. |
 | Games and other apps with a clear integer stream | The PCM precision submitted to Windows. |
 | Spotify desktop | The 16- or 24-bit lossless depth shown in the open File quality card. |
 | VLC, browser media without depth, and floating-point streams | Keeps the current output depth when track precision is unavailable. |
 
-For Apple Music, enable **Use Apple Music track format (catalog fallback)** and open the **Lossless** or **Hi-Res Lossless** badge in Apple Music. Source Switcher reads supported ALAC labels from the visible panel and associates them with the current title, artist, and album. With **Follow source bit depth (experimental)** enabled, Apple Music can raise the Windows output depth when supported. A label with only a sample rate keeps the current output depth. Automatic handoffs hold the current output format while Apple Music is playing through it.
+For Apple Music, enable **Use Apple Music track format (catalog fallback)** and open the **Lossless** or **Hi-Res Lossless** badge in Apple Music. Source Switcher reads supported ALAC labels from the visible panel and associates them with the current title, artist, and album. **Follow source bit depth (experimental)** enables depth changes when supported. A label with only a sample rate supplies no track depth. Automatic handoffs hold the current output format while Apple Music is playing through it.
 
-If an active Apple Music session stays silent while the track advances, Source Switcher can still apply a supported increase in output depth. If silence continues after Windows confirms the new format, the app can request one seek to the current playback position. A manual Apple Music depth uses the current output rate while the player is paused or the track rate is unavailable.
+If an active Apple Music session stays silent at 16-bit while the track advances, Source Switcher can use 24-bit or 32-bit output to recover playback. If silence continues after Windows confirms a recovery change, the app can request one seek to the current playback position. Once 16-bit output is associated with a failure, Apple Music Auto avoids reducing to it on that output for the rest of the run. Sources can still show the track's 16-bit depth, and other apps can still select 16-bit output. A manual Apple Music depth uses the current output rate while the player is paused or the track rate is unavailable.
 
 For Spotify, enable **Follow source bit depth (experimental)**, make Spotify the master, and click the **Lossless** badge in Spotify's player to open **File quality** for **This computer**. Keep the card open while listening. The reader supports the English 16- and 24-bit FLAC labels. Auto holds the output depth when the card is closed, the window is minimized, or the labels are unavailable.
 

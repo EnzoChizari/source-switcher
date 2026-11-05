@@ -2,7 +2,8 @@
 
 ## v1.4.3
 
-- Apple Music can raise the output bit depth when its current track is advancing but its active audio session stays silent. If silence persists after the change, Source Switcher can ask Apple Music once to reload its current playback position.
+- Apple Music can recover a silent 16-bit output by trying a higher supported depth while the track is still advancing. If silence persists after the change, Source Switcher can ask Apple Music once to reload its current playback position.
+- Auto can lower Apple Music's output depth to a supported track depth and restore the previous format if playback stays silent. Once 16-bit fails on an output, Apple Music Auto avoids lowering back to it for the rest of the run. The track depth and Windows output depth stay separate.
 - A manual Apple Music bit depth can apply at the current output rate while the player is paused or track format evidence is unavailable.
 
 ## v1.4.2

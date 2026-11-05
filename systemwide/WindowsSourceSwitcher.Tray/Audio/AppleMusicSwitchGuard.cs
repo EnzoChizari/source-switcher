@@ -12,7 +12,7 @@ internal interface IAppleSwitchSession
     Task<bool> TryReseekAsync(AppleSwitchState state, Func<bool> contextCurrent, CancellationToken cancellationToken) => Task.FromResult(false);
 }
 internal sealed record AppleSwitchResult(ApplyResult? Applied, string Detail, bool PlaybackObserved, bool RetryOnActivity,
-    bool WaitingForSignal = false);
+    bool WaitingForSignal = false, ApplyResult? Restoration = null);
 
 /// <summary>Write while Apple is rendering, or recover a proven silent stream when
 /// a higher output depth is available. Never write to an unobservable starting stream.</summary>
@@ -29,7 +29,8 @@ internal sealed class AppleMusicSwitchGuard(
     internal const string WaitingForSignalStatus = "Waiting for Apple Music to send audio. Reopen the player if it stays silent.";
     public async Task<AppleSwitchResult> RunAsync(IAppleSwitchSession? session, Func<bool> contextCurrent,
         Func<bool?> renderActive, Func<float?> signalPeak, Func<ApplyResult?> apply, CancellationToken cancellationToken,
-        Action? formatConfirmed = null, bool allowSilentDepthIncrease = false)
+        Action? formatConfirmed = null, bool allowSilentDepthIncrease = false, Func<ApplyResult?>? restorePrevious = null,
+        Func<ApplyResult?>? recoverSilent = null)
     {
         if (session is null) return new(null, "Apple Music session unavailable; output held.", false, true);
         var watch = Stopwatch.StartNew();
@@ -60,7 +61,7 @@ internal sealed class AppleMusicSwitchGuard(
                 if (healthySince is { } healthy && Now() - healthy >= HealthyConfirmation) break;
                 if (Now() - since >= StartupTimeout)
                 {
-                    if (!allowSilentDepthIncrease || !silentThroughout || !TimelineAdvanced(original.Position, state.Position))
+                    if ((!allowSilentDepthIncrease && recoverSilent is null) || !silentThroughout || !TimelineAdvanced(original.Position, state.Position))
                         return new(null, WaitingForSignalStatus, false, true, WaitingForSignal: true);
                     recoveringSilence = true;
                     break;
@@ -68,9 +69,11 @@ internal sealed class AppleMusicSwitchGuard(
                 await Wait(cancellationToken).ConfigureAwait(false);
             }
             cancellationToken.ThrowIfCancellationRequested();
-            if (contextCurrent()) applied = apply();
+            if (contextCurrent()) applied = recoveringSilence && recoverSilent is not null ? recoverSilent() : apply();
             if (applied is null) return new(null, "Apple Music evidence changed before the write; output held.", false, true);
             if (!applied.Success) return new(applied, "Apple Music output format change failed.", false, false);
+            if (!applied.Changed && !recoveringSilence)
+                return new(applied, "Apple Music is already rendering at the current output format.", true, false);
             // Endpoint readback and player recovery are different milestones. The
             // host can publish the actual output now without claiming audio resumed.
             var afterWrite = Now();
@@ -109,6 +112,19 @@ internal sealed class AppleMusicSwitchGuard(
                     if (reseekAccepted) position = state.Position;
                 }
                 await Wait(cancellationToken).ConfigureAwait(false);
+            }
+            if (applied.Changed && firstSignal is null && (lastActive == false || lastActive == true && lastPeak == 0)
+                && restorePrevious is not null && contextCurrent())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (restorePrevious() is { } restored)
+                {
+                    if (restored.Success) formatConfirmed?.Invoke();
+                    var detail = restored.Success
+                        ? "Apple Music stayed silent at the lower depth. Restored the previous output format."
+                        : "Apple Music stayed silent and Windows could not restore the previous output format: " + restored.Detail;
+                    return new(applied, detail, false, false, Restoration: restored);
+                }
             }
             return new(applied, $"Output format confirmed, but Apple Music audio/timeline recovery is unconfirmed (active={lastActive}, peak={lastPeak:G4}, position={position}->{lastPosition})."
                 + (reseeked ? " The player was asked once to reload its playback position." : "")
