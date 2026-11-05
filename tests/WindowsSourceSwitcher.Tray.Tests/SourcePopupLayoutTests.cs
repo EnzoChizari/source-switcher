@@ -108,7 +108,7 @@ public sealed class SourcePopupLayoutTests
         popup.Render([], [], [], null, settings, "Status", "Evidence", false);
         var checkboxes = Find<CheckBox>(popup).ToArray();
         var stream = checkboxes.Single(c => c.Text == "Auto-detect application stream rate");
-        var catalog = checkboxes.Single(c => c.Text == "Use Apple Music catalog rate (estimate)");
+        var catalog = checkboxes.Single(c => c.Text == "Use Apple Music track format (catalog fallback)");
         Assert.True(Find<ControlsSettingsView>(popup).Single().Contains(stream));
         Assert.Same(stream.Parent, catalog.Parent);
         Assert.True(stream.Checked);

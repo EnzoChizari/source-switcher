@@ -22,7 +22,7 @@ public sealed class SourcePopupEvidenceTests
         var catalog = new RateObservation(apple.Identity, apple.SessionToken, settings.SelectionRevision,
             96000, RateProvenance.CatalogMetadata, "Current Apple track");
         void Render(RateObservation? currentApple) => popup.Render([], [apple, browser], [], null, settings,
-            "Status", "Evidence", false, observation: decoder, appleCatalogObservation: currentApple);
+            "Status", "Evidence", false, observation: decoder, appleTrackObservation: currentApple);
         string Rate(string name) => Find<ListView>(popup).SelectMany(view => view.Items.Cast<ListViewItem>())
             .Single(row => row.SubItems.Count == 3 && row.Text == name).SubItems[2].Text;
 

@@ -34,7 +34,7 @@ public sealed class ControlsSettingsViewTests
         var requests = new List<bool>();
         popup.CatalogChanged += requests.Add;
         popup.Render([], [], [], null, new SourceSettings(), "Status", "Evidence", false);
-        var choice = Find<CheckBox>(popup).Single(control => control.Text == "Use Apple Music catalog rate (estimate)");
+        var choice = Find<CheckBox>(popup).Single(control => control.Text == "Use Apple Music track format (catalog fallback)");
         Assert.True(choice.Enabled);
         choice.Checked = true;
         choice.Checked = false;

@@ -1,5 +1,11 @@
 # Source Switcher changelog
 
+## v1.4.2
+
+- Automatic handoffs hold the selected output format while Apple Music is still playing through that output.
+- Apple Music's open Lossless details can supply the current track's reported ALAC rate and depth. Catalog values remain labeled as estimates when the panel is unavailable.
+- If the panel gives an ALAC rate without a bit depth, the output keeps its current depth.
+
 ## v1.4.1
 
 - Spotify Auto reads 16- or 24-bit lossless from the desktop player's open File quality card. Without that card, Auto keeps the current depth while following the observed Windows rate.

@@ -30,6 +30,17 @@ public sealed class FavoritePlaybackSnapshot
 
     public long Version { get; }
 
+    internal FavoritePlaybackState AppleMusicPlayback
+    {
+        get
+        {
+            if (!_complete) return FavoritePlaybackState.Unknown;
+            var states = _sessions.Where(session => IsAppleSessionId(session.AppUserModelId))
+                .Select(session => session.State).Distinct().Take(2).ToArray();
+            return states.Length == 1 ? states[0] : FavoritePlaybackState.Unknown;
+        }
+    }
+
     public IReadOnlyDictionary<string, FavoritePlaybackState> Resolve(IReadOnlyList<PlatformAudioSource> sources)
     {
         ArgumentNullException.ThrowIfNull(sources);

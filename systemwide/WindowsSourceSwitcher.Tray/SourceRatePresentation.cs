@@ -20,6 +20,11 @@ internal static class SourceRatePresentation
 
         if (source.SupportsAutomaticRate && settings.CatalogRateDetectionEnabled)
         {
+            if (observation?.Provenance == RateProvenance.PlayerMetadata
+                && IsCurrentObservation(source, settings, observation, requireActive: false))
+                return new(FormatRate(observation.SampleRateHz!.Value)
+                    + (observation.BitsPerSample is { } reportedDepth ? $" / {reportedDepth}-bit track" : " track"),
+                    observation.Detail + " Windows output is shown separately.", observation.Detail);
             // Track metadata is meaningful while paused as well. The monitor validates its
             // track/session identity separately; the write policy still requires playback.
             if (IsCurrentCatalogEstimate(source, settings, observation))
@@ -104,14 +109,12 @@ internal static class SourceRatePresentation
         if (source is null || !KeysEqual(source.Identity, settings.SelectedSourceKey))
             return "Hold output / choose a manual rate";
         if (source.SupportsAutomaticRate && settings.CatalogRateDetectionEnabled)
-            return "Auto — Apple Music catalog estimate";
+            return "Auto — Apple Music track format";
         if (settings.StreamRateDetectionEnabled)
             return "Auto — application stream rate (WASAPI)";
         if (!source.SupportsAutomaticRate)
             return "No automatic detector — choose a manual rate";
-        return settings.CatalogRateDetectionEnabled
-            ? "Auto — Apple Music catalog estimate"
-            : "Catalog estimate off — choose a manual rate";
+        return "Apple Music track format off — choose a manual rate";
     }
 
     internal static string FormatRate(int rate) => (rate / 1000.0).ToString("0.###", CultureInfo.InvariantCulture) + " kHz";

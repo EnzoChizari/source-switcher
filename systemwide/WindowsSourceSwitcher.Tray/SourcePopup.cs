@@ -19,7 +19,7 @@ internal sealed class SourcePopup : Form
     private readonly Label _evidence = new() { AutoSize = true, MaximumSize = new Size(430, 0), Text = "Select an app to see its detection support and saved target." };
     private readonly CheckBox _enabled = new MinimalCheckBox() { AutoSize = true, Text = "Enable switching", Checked = true };
     private readonly CheckBox _catalog = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
-        Text = "Use Apple Music catalog rate (estimate)" };
+        Text = "Use Apple Music track format (catalog fallback)" };
     private readonly CheckBox _streamDetection = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
         Text = "Auto-detect application stream rate" };
     private readonly CheckBox _followBits = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
@@ -460,7 +460,7 @@ internal sealed class SourcePopup : Form
         string status, string evidence, bool applying, RateObservation? observation = null,
         IReadOnlyDictionary<string, RateObservation>? streamObservations = null, BrowserDecoderSnapshot? browser = null,
         IReadOnlyDictionary<string, FavoritePlaybackState>? playback = null,
-        RateObservation? appleCatalogObservation = null)
+        RateObservation? appleTrackObservation = null)
     {
         _rendering = true;
         try
@@ -500,7 +500,7 @@ internal sealed class SourcePopup : Form
             var sourceRows = SourceListPresentation.Build(sources, settings, playback);
             var rowsSignature = string.Join("|", sources.Select(s => $"{s.Identity}:{s.SessionToken}:{s.IsActive}"))
                 + settings.SelectedSourceKey + ":" + settings.SelectionRevision + ":" + settings.CatalogRateDetectionEnabled
-                + ":" + settings.StreamRateDetectionEnabled + ":" + observation + ":" + appleCatalogObservation
+                + ":" + settings.StreamRateDetectionEnabled + ":" + observation + ":" + appleTrackObservation
                 + ":" + settings.BrowserRateDetectionEnabled + ":" + browser?.Version
                 + ":" + settings.SelectedSourceDisplayName
                 + ":" + settings.LastKnownSourceKey + ":" + settings.LastKnownSampleRateHz
@@ -519,7 +519,7 @@ internal sealed class SourcePopup : Form
                 {
                     var source = entry.LiveSource;
                     var stream = streamObservations?.FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.Key, entry.Identity)).Value;
-                    var sourceObservation = source?.SupportsAutomaticRate == true ? appleCatalogObservation ?? observation : observation;
+                    var sourceObservation = source?.SupportsAutomaticRate == true ? appleTrackObservation ?? observation : observation;
                     var rate = source is not null ? SourceRatePresentation.Describe(source, settings, sourceObservation, stream, browser, entry.MediaPlayback)
                         : SourceListPresentation.DescribeSavedRate(entry, settings);
                     var row = new ListViewItem([entry.DisplayName, entry.SessionText, rate.Text])

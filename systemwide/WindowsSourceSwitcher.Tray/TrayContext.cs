@@ -26,11 +26,16 @@ internal sealed class TrayContext : ApplicationContext
     private readonly FullscreenAppMonitor _fullscreenMonitor = new();
     private string _fullscreenStatus = "Fullscreen app priority is off.";
     private bool _automaticMasterChange;
+    private long? _automaticSelectionRevision;
     private nint _fullscreenSuppressedWindow;
     private string? _fullscreenRetainedSourceKey;
     private readonly SessionContinuityTracker _sessionContinuity = new();
     private readonly PinnedOutputConnection _outputConnection = new();
     private readonly CancellationTokenSource _appleSwitchLifetime = new();
+    private readonly AppleMusicHandoffProtection _appleHandoff = new();
+    private readonly AppleMusicQualityReader _appleQualityReader = new();
+    private (TrackSnapshot Track, long Generation, string Session, AppleMusicQualityReader.Format Format)? _appleQuality;
+    private long? _lastAppleQualityRead;
     private string _appleSwitchDetail = "Apple Music switches while rendering; signal and timeline recovery are checked.";
     private string? _appleSwitchFailureKey;
     private string? _appleWaitingForSignalKey;
@@ -583,6 +588,7 @@ internal sealed class TrayContext : ApplicationContext
             || previousRevision != _settings.SelectionRevision)
         {
             RecordSessionContinuity(_sessionContinuity.Cancel());
+            _automaticSelectionRevision = _automaticMasterChange ? _settings.SelectionRevision : null;
             if (!_automaticMasterChange)
                 _fullscreenSuppressedWindow = _fullscreenMonitor.CurrentFullscreenWindow;
         }
@@ -997,6 +1003,10 @@ internal sealed class TrayContext : ApplicationContext
 
             var playbackSnapshot = _playback.Snapshot;
             _mediaPlayback = playbackSnapshot.Resolve(snapshot.Sources);
+            var appleOnOutput = snapshot.Sources.FirstOrDefault(source => source.SupportsAutomaticRate);
+            var protectApplePlayback = _appleHandoff.Observe(snapshot.TargetAvailable ? endpointId : null,
+                appleOnOutput is not null, playbackSnapshot.AppleMusicPlayback,
+                System.Diagnostics.Stopwatch.GetElapsedTime(_startedAt));
             if (!_diagnosticsMode && !_playback.IsCurrent(playbackSnapshot.Version))
             {
                 RequestRefresh(census: true);
@@ -1011,6 +1021,24 @@ internal sealed class TrayContext : ApplicationContext
             var selectedRevision = _settings.SelectionRevision;
             var catalogGeneration = _observationGeneration;
             var catalogSession = _observation?.SessionToken;
+            var appleSource = appleOnOutput?.Identity == selectedKey ? appleOnOutput : null;
+            var appleTrack = appleOnOutput is null ? null : _monitor?.GetCurrentTrack(appleOnOutput);
+            if (appleTrack is { } track && appleOnOutput is not null
+                && (_appleQuality is not { } cached || !ReferenceEquals(cached.Track, track.Track)
+                    || cached.Generation != track.Generation || cached.Session != appleOnOutput.SessionToken)
+                && (appleSource is not null || _popup.Visible)
+                && (_lastAppleQualityRead is not { } lastRead
+                    || System.Diagnostics.Stopwatch.GetElapsedTime(lastRead) >= TimeSpan.FromSeconds(1)))
+            {
+                _lastAppleQualityRead = System.Diagnostics.Stopwatch.GetTimestamp();
+                var format = await _appleQualityReader.ReadAsync(appleOnOutput, track.Track);
+                if (_exiting || epoch != _epoch) return;
+                if (format is not null && _monitor?.IsMetadataCurrent(track.Generation, appleOnOutput.Identity, appleOnOutput.SessionToken, 0, track.Track) == true)
+                    _appleQuality = (track.Track, track.Generation, appleOnOutput.SessionToken, format);
+            }
+            var appleObservation = GetAppleQualityObservation(appleOnOutput);
+            var appleReported = appleSource is not null ? appleObservation : null;
+            var appleReportedEvidence = _appleQuality;
             var sources = snapshot.Sources.Where(s => s.CanPersist).Select(s => PlaybackPresentation.ForRatePolicy(s, _mediaPlayback)).ToArray();
             _browserObservation = BrowserSourcePolicy.Observe(_settings, sources, browser,
                 _browserBridge?.IsEvidenceCurrent(browser.Version) == true);
@@ -1025,7 +1053,7 @@ internal sealed class TrayContext : ApplicationContext
                 : spotify is not null ? spotifyQuality?.Observe(spotify, selectedRevision) : null;
             if (_exiting || epoch != _epoch) return;
             _playerObservation = playerObservation;
-            var observations = _streamObservations.Values.Concat(new[] { _observation, _browserObservation, playerObservation }.OfType<RateObservation>()).ToArray();
+            var observations = _streamObservations.Values.Concat(new[] { _observation, appleReported, _browserObservation, playerObservation }.OfType<RateObservation>()).ToArray();
             var decision = BrowserSourcePolicy.HoldIfRequired(_settings, browser, _browserObservation,
                 SampleRatePolicy.Evaluate(_settings, sources, observations));
             _lastDecision = decision;
@@ -1074,7 +1102,7 @@ internal sealed class TrayContext : ApplicationContext
             if (snapshot.Current is null || snapshot.Mix is null) { _status = "Cannot read the output format. Refresh to retry."; return; }
 
             var sourceBits = decision.DesiredBitsPerSample;
-            var preventDepthReduction = decision.Reason == RateDecisionReason.CatalogMetadata && !decision.ManualBitDepth;
+            var preventDepthReduction = appleSource is not null && !decision.ManualBitDepth;
             if (snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
                 && (sourceBits is null || snapshot.Current.BitDepth == sourceBits
                     || preventDepthReduction && snapshot.Current.BitDepth > sourceBits))
@@ -1103,6 +1131,7 @@ internal sealed class TrayContext : ApplicationContext
             {
                 RateDecisionReason.CatalogMetadata => "Apple Music catalog estimate",
                 RateDecisionReason.BrowserDecoder => "Media file header",
+                RateDecisionReason.PlayerMetadata when appleReported is not null => "Apple Music Lossless details",
                 RateDecisionReason.PlayerMetadata => spotifyQuality is null ? "Fooyin track metadata" : "Spotify File quality",
                 _ => "Submitted PCM"
             };
@@ -1117,7 +1146,14 @@ internal sealed class TrayContext : ApplicationContext
                 return;
             }
             var key = $"{endpointId}|{_settings.SelectedSourceKey}|{desired}|{sourceBits}|{target.BitsPerSample}|{snapshot.Current.BitDepth}|{snapshot.Current.Channels}|{_settings.SelectionRevision}";
-            var appleSource = snapshot.Sources.FirstOrDefault(s => s.Identity == selectedKey && s.SupportsAutomaticRate);
+            if (appleSource is null && _automaticSelectionRevision == selectedRevision && protectApplePlayback
+                && decision.Reason != RateDecisionReason.ManualOverride && !decision.ManualBitDepth)
+            {
+                _candidateKey = null;
+                _stabilityTimer.Stop();
+                _status = "Holding the output format while Apple Music is playing. Automatic format changes resume after it stops.";
+                return;
+            }
             if (_failedKey == key) { _status = _appleSwitchFailureKey == key ? _appleSwitchDetail : "Switch failed. Check exclusive playback / device availability, then Refresh / retry. See switcher.log for details."; return; }
             var appleSignalKey = appleSource is null ? null : $"{endpointId}|{selectedKey}|{selectedRevision}";
             var waitingForAppleSignal = appleSignalKey is not null && _appleWaitingForSignalKey == appleSignalKey;
@@ -1169,6 +1205,8 @@ internal sealed class TrayContext : ApplicationContext
             Render();
             AppleSwitchResult? appleSwitch = null;
             var appleContextCurrent = appleSource is null ? null : CreateAppleSwitchContext(endpointId, selectedKey!, selectedRevision);
+            bool AppleReportedEvidenceCurrent() => appleSource is not null && appleReportedEvidence is { } reported
+                && _monitor?.IsEvidenceCurrent(reported.Generation, appleSource.Identity, appleSource.SessionToken, 0, reported.Track) == true;
             var result = await Task.Run<ApplyResult?>(async () =>
             {
                 if (_exiting || epoch != Volatile.Read(ref _epoch)) return null;
@@ -1184,7 +1222,7 @@ internal sealed class TrayContext : ApplicationContext
                     && _browserBridge?.IsEvidenceCurrent(browser.Version) != true) return null;
                 if (decision.Reason == RateDecisionReason.PlayerMetadata)
                 {
-                    var current = spotify is not null
+                    var current = appleReported is not null ? AppleReportedEvidenceCurrent() : spotify is not null
                         ? await _spotifyFileQuality.ReadAsync(spotify.Key) == spotifyQuality
                         : fooyin is not null && FooyinFormatReport.Read(_fooyinReportPath, fooyin, selectedRevision) == playerObservation;
                     if (!current || _exiting || epoch != Volatile.Read(ref _epoch) || !_playback.IsCurrent(playbackVersion)) return null;
@@ -1222,6 +1260,7 @@ internal sealed class TrayContext : ApplicationContext
                     return ContextCurrent() && epoch == Volatile.Read(ref _epoch)
                         && (decision.Reason == RateDecisionReason.ManualOverride || _playback.IsCurrent(playbackVersion))
                         && (decision.Reason != RateDecisionReason.WasapiStream || _streamMonitor?.IsEvidenceCurrent(observedStreamVersion) == true)
+                        && (decision.Reason != RateDecisionReason.PlayerMetadata || AppleReportedEvidenceCurrent())
                         && (decision.Reason != RateDecisionReason.CatalogMetadata || selectedKey is not null && catalogSession is not null
                             && _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) == true);
                 }
@@ -1723,6 +1762,12 @@ internal sealed class TrayContext : ApplicationContext
             : null;
     }
 
+    private RateObservation? GetAppleQualityObservation(PlatformAudioSource? source) =>
+        source is not null && _settings.CatalogRateDetectionEnabled && _appleQuality is { } quality
+        && quality.Session == source.SessionToken
+        && _monitor?.IsMetadataCurrent(quality.Generation, source.Identity, quality.Session, 0, quality.Track) == true
+            ? quality.Format.Observe(source, _settings.SelectionRevision) : null;
+
     private async Task RetryCatalogAsync()
     {
         try { if (_monitor is not null) await _monitor.ResolveCurrentAsync(CancellationToken.None); }
@@ -1738,11 +1783,13 @@ internal sealed class TrayContext : ApplicationContext
         {
             var status = _saveError ?? (_warning is null ? _status : _warning);
             var source = _snapshot.Sources.FirstOrDefault(s => s.Identity == _settings.SelectedSourceKey);
+            var appleObservation = GetAppleQualityObservation(_snapshot.Sources.FirstOrDefault(s => s.SupportsAutomaticRate)) ?? _observation;
+            var observation = source?.SupportsAutomaticRate == true ? appleObservation : _browserObservation ?? _playerObservation;
             var evidence = _evidence;
             if (source is not null)
             {
                 _streamObservations.TryGetValue(source.Identity, out var streamObservation);
-                var display = SourceRatePresentation.Describe(source, _settings, _browserObservation ?? _playerObservation ?? _observation, streamObservation,
+                var display = SourceRatePresentation.Describe(source, _settings, observation, streamObservation,
                     _browserBridge?.Snapshot, _mediaPlayback.GetValueOrDefault(source.Identity));
                 // Show capability immediately after selection, before the next census. A saved
                 // Apple Music preference never implies a detector exists for another app.
@@ -1764,7 +1811,7 @@ internal sealed class TrayContext : ApplicationContext
                         : "Selected app is unavailable. Output stays unchanged while waiting for its stream.";
             }
             _popup.Render(_snapshot.Devices, _snapshot.Sources, _snapshot.Formats, _snapshot.Current,
-                _settings, _suspended ? _powerStatus : status, evidence, _applying || _suspended, _browserObservation ?? _playerObservation ?? _observation, _streamObservations, _browserBridge?.Snapshot, _mediaPlayback, _observation);
+                _settings, _suspended ? _powerStatus : status, evidence, _applying || _suspended, observation, _streamObservations, _browserBridge?.Snapshot, _mediaPlayback, appleObservation);
             _popup.SetFavoriteAutoSwitchStatus(_favoriteAutoStatus);
             _popup.SetFullscreenStatus(_fullscreenStatus);
             if (_popup.DiagnosticsVisible) RenderDiagnostics();
@@ -1795,11 +1842,13 @@ internal sealed class TrayContext : ApplicationContext
     private void RenderDiagnostics()
     {
         var source = _snapshot.Sources.FirstOrDefault(value => StringComparer.OrdinalIgnoreCase.Equals(value.Identity, _settings.SelectedSourceKey));
+        var player = source?.SupportsAutomaticRate == true ? GetAppleQualityObservation(source) : _playerObservation;
+        var observation = source?.SupportsAutomaticRate == true ? player ?? _observation : _browserObservation ?? player;
         _streamObservations.TryGetValue(_settings.SelectedSourceKey ?? "", out var stream);
         var streamRate = source is not null && stream is not null && stream.SessionToken == source.SessionToken
             && stream.SelectionRevision == _settings.SelectionRevision ? stream.SampleRateHz : null;
         var target = source is null ? "No current audio session"
-            : SourceRatePresentation.Describe(source, _settings, _browserObservation ?? _playerObservation ?? _observation, stream, _browserBridge?.Snapshot,
+            : SourceRatePresentation.Describe(source, _settings, observation, stream, _browserBridge?.Snapshot,
                 _mediaPlayback.GetValueOrDefault(source.Identity)).Text;
         var browser = _browserBridge?.Snapshot ?? BrowserDecoderSnapshot.Empty;
         var confidence = _lastDecision?.Reason switch
@@ -1841,9 +1890,9 @@ internal sealed class TrayContext : ApplicationContext
             new("Confidence", confidence),
             new("Original media", _browserObservation?.SampleRateHz is { } decoded ? SourcePopup.FormatRate(decoded)
                 + (_browserObservation.BitsPerSample is { } fileBits ? $" · {fileBits}-bit file header" : " chosen tab evidence")
-                + "; app routing unverified" : _playerObservation?.SampleRateHz is { } playerRate
-                    ? SourcePopup.FormatRate(playerRate) + (_playerObservation.BitsPerSample is { } playerBits ? $" · {playerBits}-bit" : "")
-                        + " · " + _playerObservation.Detail
+                + "; app routing unverified" : player?.SampleRateHz is { } playerRate
+                    ? SourcePopup.FormatRate(playerRate) + (player.BitsPerSample is { } playerBits ? $" · {playerBits}-bit" : "")
+                        + " · " + player.Detail
                     : "Unknown; submitted PCM does not establish content rate"),
             new("Submitted PCM", streamRate is { } rate
                 ? SourcePopup.FormatRate(rate) + (stream?.BitsPerSample is { } bits
@@ -1854,7 +1903,9 @@ internal sealed class TrayContext : ApplicationContext
                     ? $"On · {wantedBits}-bit " + (_lastDecision.ManualBitDepth ? "manual override"
                         : _lastDecision.Reason == RateDecisionReason.CatalogMetadata ? "catalog estimate · raise only"
                         : _lastDecision.Reason == RateDecisionReason.BrowserDecoder ? "file header"
-                        : _lastDecision.Reason == RateDecisionReason.PlayerMetadata ? "player metadata" : "submitted PCM")
+                        : _lastDecision.Reason == RateDecisionReason.PlayerMetadata
+                            ? source?.SupportsAutomaticRate == true ? "player report · raise only" : "player metadata"
+                            : "submitted PCM")
                     : source?.SupportsAutomaticRate == true ? "On · keeping output depth for Apple Music"
                     : "On · keeping output depth until usable evidence"
                 : "Off · keep output depth"),

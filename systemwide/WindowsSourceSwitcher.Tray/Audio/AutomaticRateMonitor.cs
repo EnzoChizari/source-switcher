@@ -60,10 +60,22 @@ public sealed class AutomaticRateMonitor : IAsyncDisposable
 
     public event EventHandler<NativeRateObservation>? RateObserved;
 
-    public bool IsEvidenceCurrent(long generation, string sourceKey, string sessionToken, long selectionRevision)
+    internal (TrackSnapshot Track, long Generation)? GetCurrentTrack(PlatformAudioSource source)
+    {
+        lock (_sync)
+        {
+            return !_disposed && !_refreshingMetadata && _latestTrack is { } track
+                && IsMetadataCurrent(_generation, source.Identity, source.SessionToken, 0)
+                ? (track, _generation) : null;
+        }
+    }
+
+    public bool IsEvidenceCurrent(long generation, string sourceKey, string sessionToken, long selectionRevision,
+        TrackSnapshot? expectedTrack = null)
     {
         lock (_sync) return !_disposed && !_refreshingMetadata && !_metadataRefreshFailed
             && _generation == generation && _selectionRevision == selectionRevision
+            && (expectedTrack is null || ReferenceEquals(_latestTrack, expectedTrack))
             && StringComparer.OrdinalIgnoreCase.Equals(_selectedSource?.Identity, sourceKey)
             && StringComparer.Ordinal.Equals(_selectedSource?.SessionToken, sessionToken)
             && IsCurrentPlayableTrack(_selectedSource, _latestTrack);
@@ -71,10 +83,12 @@ public sealed class AutomaticRateMonitor : IAsyncDisposable
 
     /// <summary>Track metadata can remain current while paused or its Windows stream restarts.
     /// This permits display only; endpoint writes must use the stronger IsEvidenceCurrent guard.</summary>
-    public bool IsMetadataCurrent(long generation, string sourceKey, string sessionToken, long selectionRevision)
+    public bool IsMetadataCurrent(long generation, string sourceKey, string sessionToken, long selectionRevision,
+        TrackSnapshot? expectedTrack = null)
     {
         lock (_sync) return !_disposed && !_refreshingMetadata && !_metadataRefreshFailed
             && _generation == generation && _selectionRevision == selectionRevision
+            && (expectedTrack is null || ReferenceEquals(_latestTrack, expectedTrack))
             && StringComparer.OrdinalIgnoreCase.Equals(_selectedSource?.Identity, sourceKey)
             && StringComparer.Ordinal.Equals(_selectedSource?.SessionToken, sessionToken)
             && IsCurrentMetadataTrack(_selectedSource, _latestTrack);

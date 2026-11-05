@@ -231,9 +231,9 @@ public sealed class SourceRatePresentationTests
         var settings = Settings(apple);
 
         Assert.Equal("No automatic detector — choose a manual rate", SourceRatePresentation.AutoModeText(generic, Settings(generic)));
-        Assert.Equal("Auto — Apple Music catalog estimate", SourceRatePresentation.AutoModeText(apple, settings));
+        Assert.Equal("Auto — Apple Music track format", SourceRatePresentation.AutoModeText(apple, settings));
         settings.CatalogRateDetectionEnabled = false;
-        Assert.Equal("Catalog estimate off — choose a manual rate", SourceRatePresentation.AutoModeText(apple, settings));
+        Assert.Equal("Apple Music track format off — choose a manual rate", SourceRatePresentation.AutoModeText(apple, settings));
         Assert.Equal("Hold output / choose a manual rate", SourceRatePresentation.AutoModeText(null, settings));
         Assert.Equal("Hold output / choose a manual rate", SourceRatePresentation.AutoModeText(generic, settings));
     }
@@ -373,7 +373,7 @@ public sealed class SourceRatePresentationTests
         Assert.Equal("Waiting for stream", display.Text);
         Assert.Contains("Refresh retries existing-stream detection", display.Detail);
         Assert.Equal("Auto — application stream rate (WASAPI)", SourceRatePresentation.AutoModeText(source, settings));
-        Assert.Equal("Auto — Apple Music catalog estimate", SourceRatePresentation.AutoModeText(AppleSource(), StreamSettings(AppleSource())));
+        Assert.Equal("Auto — Apple Music track format", SourceRatePresentation.AutoModeText(AppleSource(), StreamSettings(AppleSource())));
     }
 
     private static PlatformAudioSource AppleSource() => new("APPLE", "AppleMusic",

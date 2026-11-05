@@ -48,12 +48,14 @@ For a Kodik player embedded in Animelib, click **Enable embedded Kodik players**
 
 | Source | What Auto depth follows |
 | --- | --- |
-| Apple Music | A higher catalog estimate, when enabled and supported by the output. Catalog depth is an estimate. |
+| Apple Music | A higher depth from the open Lossless details or, when unavailable, an enabled catalog estimate. The output must support it. |
 | Chrome and Helium | Integer depth from a supported WAV or native FLAC header in the linked tab. |
 | Fooyin with Now Playing export | The active track's reported rate and depth. |
 | Games and other apps with a clear integer stream | The PCM precision submitted to Windows. |
 | Spotify desktop | The 16- or 24-bit lossless depth shown in the open File quality card. |
 | VLC, browser media without depth, and floating-point streams | Keeps the current output depth when track precision is unavailable. |
+
+For Apple Music, enable **Use Apple Music track format (catalog fallback)** and open the **Lossless** or **Hi-Res Lossless** badge in Apple Music. Source Switcher reads supported ALAC labels from the visible panel and associates them with the current title, artist, and album. With **Follow source bit depth (experimental)** enabled, Apple Music can raise the Windows output depth when supported. A label with only a sample rate keeps the current output depth. Automatic handoffs hold the current output format while Apple Music is playing through it.
 
 For Spotify, enable **Follow source bit depth (experimental)**, make Spotify the master, and click the **Lossless** badge in Spotify's player to open **File quality** for **This computer**. Keep the card open while listening. The reader supports the English 16- and 24-bit FLAC labels. Auto holds the output depth when the card is closed, the window is minimized, or the labels are unavailable.
 
