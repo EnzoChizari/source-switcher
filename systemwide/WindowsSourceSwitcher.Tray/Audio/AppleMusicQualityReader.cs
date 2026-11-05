@@ -52,8 +52,16 @@ internal sealed class AppleMusicQualityReader
             }
             if (window.Handle == nint.Zero) return null;
             root = AutomationElement.FromHandle(window.Handle);
-            if (root.Current.ProcessId != window.Pid || root.Current.IsOffscreen
-                || !CaptionMatches(Find(root, "LCD")?.Current.Name, track)) return null;
+            if (root.Current.ProcessId != window.Pid || root.Current.IsOffscreen) return null;
+            var captionMatches = CaptionMatches(Find(root, "LCD")?.Current.Name, track);
+            // WinUI's caption can arrive just after the media-session notification.
+            for (var retry = 0; !captionMatches && automatic && retry < 3
+                && GetForegroundWindow() == window.Handle; retry++)
+            {
+                Thread.Sleep(25);
+                captionMatches = CaptionMatches(Find(root, "LCD")?.Current.Name, track);
+            }
+            if (!captionMatches) return null;
             var panel = Find(root, "AudioQualityFlyout");
             if (panel is null && automatic && !_automaticDismissalFailed
                 && (_automaticAttempt is not { } attempted || !ReferenceEquals(attempted.Track, track) || attempted.ProcessId != window.Pid)

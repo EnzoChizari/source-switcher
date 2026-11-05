@@ -11,6 +11,8 @@ public sealed class SourcePrioritySwitchPolicy
     private TimeSpan? _since, _last, _recoveryUntil;
     public bool HasPendingHandoff => _candidate is not null && _since is not null;
 
+    public void CancelPendingHandoff() => Reset();
+
     public FavoriteAutoSwitchDecision Update(SourceSettings settings, IReadOnlyList<SourceSnapshot> sources,
         IReadOnlyDictionary<string, FavoritePlaybackState> playback, TimeSpan now, bool allowFromNoMaster = false)
     {

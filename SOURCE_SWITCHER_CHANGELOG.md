@@ -1,5 +1,10 @@
 # Source Switcher changelog
 
+## v1.4.7
+
+- A playing Apple Music master stays selected through a brief stream restart between tracks, avoiding a round trip through another app.
+- Automatic Lossless reads allow a short wait for the player caption to catch up with the track notification.
+
 ## v1.4.6
 
 - Source Switcher can read the Lossless details automatically when Apple Music is in front. It briefly opens its own panel for the current track and closes it after reading. The new setting can be disabled independently of catalog fallback.

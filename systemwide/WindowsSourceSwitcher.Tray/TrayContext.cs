@@ -33,6 +33,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly PinnedOutputConnection _outputConnection = new();
     private readonly CancellationTokenSource _appleSwitchLifetime = new();
     private readonly AppleMusicHandoffProtection _appleHandoff = new();
+    private readonly AppleMusicTransitionGuard _appleTransition = new();
     private readonly AppleMusicQualityReader _appleQualityReader = new();
     private (TrackSnapshot Track, long Generation, string Session, IReadOnlyList<int> ProcessIds, AppleMusicQualityReader.Format Format)? _appleQuality;
     private (TrackSnapshot Track, long Timestamp)? _lastAppleQualityRead;
@@ -828,9 +829,21 @@ internal sealed class TrayContext : ApplicationContext
             return false;
         }
         if (_diagnosticsMode || !snapshot.TargetAvailable || snapshot.Error is not null || _saveError is not null) return false;
+        var now = System.Diagnostics.Stopwatch.GetElapsedTime(_startedAt);
+        var currentMaster = snapshot.Sources.FirstOrDefault(source =>
+            StringComparer.OrdinalIgnoreCase.Equals(source.Identity, _settings.SelectedSourceKey));
+        var transitionRetry = _appleTransition.RetryAfter(currentMaster, playbackSnapshot.AppleMusicPlayback, now);
+        if (_settings.SwitchingEnabled && _settings.FavoriteAutoSwitchEnabled && transitionRetry is not null)
+        {
+            _favoriteAutoPolicy.CancelPendingHandoff();
+            _favoriteAutoStatus = "Apple Music is still playing; waiting briefly for its audio stream to reopen.";
+            _favoriteAutoTimer.Interval = 100;
+            _favoriteAutoTimer.Start();
+            return false;
+        }
         var decision = _favoriteAutoPolicy.Update(_settings,
             snapshot.Sources.Where(source => source.CanPersist).Select(source => source.ToSnapshot()).ToArray(),
-            playbackSnapshot.ResolveForFavorites(snapshot.Sources), System.Diagnostics.Stopwatch.GetElapsedTime(_startedAt),
+            playbackSnapshot.ResolveForFavorites(snapshot.Sources), now,
             _priorityHandoffAfterFullscreen);
         _favoriteAutoStatus = decision.Detail;
         if (decision.RetryAfter is { } delay)
