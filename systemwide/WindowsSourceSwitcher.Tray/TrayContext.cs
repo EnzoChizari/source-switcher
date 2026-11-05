@@ -36,7 +36,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly AppleMusicTransitionGuard _appleTransition = new();
     private readonly AppleMusicQualityReader _appleQualityReader = new();
     private (TrackSnapshot Track, long Generation, string Session, IReadOnlyList<int> ProcessIds, AppleMusicQualityReader.Format Format)? _appleQuality;
-    private (TrackSnapshot Track, long Timestamp)? _lastAppleQualityRead;
+    private (TrackSnapshot Track, long Timestamp, long Started, int Count, bool Retry)? _lastAppleQualityRead;
     private string _appleSwitchDetail = "Apple Music switches while rendering; signal and timeline recovery are checked.";
     private string? _appleSwitchFailureKey;
     private (string Key, string Detail)? _appleRejectedReduction;
@@ -1071,17 +1071,35 @@ internal sealed class TrayContext : ApplicationContext
                     || cached.Generation != track.Generation || cached.Session != appleOnOutput.SessionToken)
                 && (appleSource is not null || _popup.Visible)
                 && (_lastAppleQualityRead is not { } lastRead || !ReferenceEquals(lastRead.Track, track.Track)
-                    || System.Diagnostics.Stopwatch.GetElapsedTime(lastRead.Timestamp) >= TimeSpan.FromSeconds(1)))
+                    || System.Diagnostics.Stopwatch.GetElapsedTime(lastRead.Timestamp) >= TimeSpan.FromSeconds(1)
+                    || lastRead.Retry && lastRead.Count < 3
+                        && System.Diagnostics.Stopwatch.GetElapsedTime(lastRead.Started) < TimeSpan.FromMilliseconds(600)))
             {
-                _lastAppleQualityRead = (track.Track, System.Diagnostics.Stopwatch.GetTimestamp());
+                var readStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+                var previousRead = _lastAppleQualityRead is { } earlier && ReferenceEquals(earlier.Track, track.Track) ? earlier : default;
+                var firstReadStarted = previousRead.Track is null ? readStarted : previousRead.Started;
+                var readCount = Math.Min(previousRead.Count + 1, 3);
+                _lastAppleQualityRead = (track.Track, readStarted, firstReadStarted, readCount, false);
                 var automatic = _settings.AppleMusicAutoReadQuality && playbackSnapshot.AppleMusicPlayback == FavoritePlaybackState.Playing;
-                var format = await _appleQualityReader.ReadAsync(appleOnOutput, track.Track, automatic);
+                var quality = await _appleQualityReader.ReadAsync(appleOnOutput, track.Track, automatic);
                 if (_exiting || epoch != _epoch) return;
+                var format = quality.Format;
                 if (format is not null && _monitor?.IsMetadataCurrent(track.Generation, appleOnOutput.Identity, appleOnOutput.SessionToken, 0, track.Track) == true)
                 {
                     _appleQuality = (track.Track, track.Generation, appleOnOutput.SessionToken, appleOnOutput.ProcessIds, format);
                     Log($"Apple Music Lossless details report {SourcePopup.FormatRate(format.Rate)}"
                         + (format.Bits is { } reportedBits ? $" · {reportedBits}-bit." : " · depth unavailable."), "Apple Music");
+                    var identificationMs = (DateTimeOffset.UtcNow - track.Track.DetectedAtUtc).TotalMilliseconds;
+                    if (identificationMs is >= 0 and <= 10000)
+                        Log($"Apple Music timing: player format identified {identificationMs:0} ms after track metadata.", "Timing");
+                }
+                else if (quality.RetrySuggested && readCount < 3
+                    && System.Diagnostics.Stopwatch.GetElapsedTime(firstReadStarted) < TimeSpan.FromMilliseconds(600))
+                {
+                    _lastAppleQualityRead = (track.Track, readStarted, firstReadStarted, readCount, true);
+                    _status = "Reading Apple Music's current track format…";
+                    _refreshPending = true;
+                    return;
                 }
             }
             var appleObservation = GetAppleQualityObservation(appleOnOutput);

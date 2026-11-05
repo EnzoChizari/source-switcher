@@ -9,9 +9,10 @@ using WindowsSourceSwitcher.Core;
 
 namespace WindowsSourceSwitcher.Tray.Audio;
 
-/// <summary>Reads Apple Music's quality panel. When enabled, invokes the badge once per track and closes only its own popup.</summary>
+/// <summary>Reads Apple Music's quality panel, with bounded automatic attempts and cleanup of its own popup.</summary>
 internal sealed class AppleMusicQualityReader
 {
+    internal sealed record Result(Format? Format, bool RetrySuggested = false);
     internal sealed record Format(int Rate, int? Bits)
     {
         internal RateObservation Observe(PlatformAudioSource source, long revision) =>
@@ -20,22 +21,22 @@ internal sealed class AppleMusicQualityReader
     }
 
     private int _reading;
-    private (TrackSnapshot Track, int ProcessId)? _automaticAttempt;
+    private (TrackSnapshot Track, int ProcessId, int Count)? _automaticAttempt;
     private bool _automaticDismissalFailed;
 
-    internal async Task<Format?> ReadAsync(PlatformAudioSource source, TrackSnapshot track, bool automatic = false)
+    internal async Task<Result> ReadAsync(PlatformAudioSource source, TrackSnapshot track, bool automatic = false)
     {
-        if (Interlocked.Exchange(ref _reading, 1) != 0) return null;
+        if (Interlocked.Exchange(ref _reading, 1) != 0) return new(null);
         var pending = Task.Run(() =>
         {
             try { return Read(source, track, automatic); }
             finally { Volatile.Write(ref _reading, 0); }
         });
         try { return await pending.WaitAsync(TimeSpan.FromMilliseconds(600)).ConfigureAwait(false); }
-        catch (TimeoutException) { return null; }
+        catch (TimeoutException) { return new(null); }
     }
 
-    private Format? Read(PlatformAudioSource source, TrackSnapshot track, bool automatic)
+    private Result Read(PlatformAudioSource source, TrackSnapshot track, bool automatic)
     {
         var processes = Process.GetProcessesByName("AppleMusic");
         AutomationElement? root = null;
@@ -47,12 +48,13 @@ internal sealed class AppleMusicQualityReader
             {
                 var handle = process.MainWindowHandle;
                 if (handle == nint.Zero || !AppleMusicIdentity.Equivalent(process.MainModule?.FileName, source.ExecutablePath)) continue;
-                if (window.Handle != nint.Zero) return null;
+                if (window.Handle != nint.Zero) return new(null);
                 window = (handle, process.Id);
             }
-            if (window.Handle == nint.Zero) return null;
+            if (window.Handle == nint.Zero) return new(null);
             root = AutomationElement.FromHandle(window.Handle);
-            if (root.Current.ProcessId != window.Pid || root.Current.IsOffscreen) return null;
+            if (root.Current.ProcessId != window.Pid || root.Current.IsOffscreen) return new(null);
+            var canRetry = automatic && GetForegroundWindow() == window.Handle;
             var captionMatches = CaptionMatches(Find(root, "LCD")?.Current.Name, track);
             // WinUI's caption can arrive just after the media-session notification.
             for (var retry = 0; !captionMatches && automatic && retry < 3
@@ -61,10 +63,11 @@ internal sealed class AppleMusicQualityReader
                 Thread.Sleep(25);
                 captionMatches = CaptionMatches(Find(root, "LCD")?.Current.Name, track);
             }
-            if (!captionMatches) return null;
+            if (!captionMatches) return new(null, canRetry);
             var panel = Find(root, "AudioQualityFlyout");
             if (panel is null && automatic && !_automaticDismissalFailed
-                && (_automaticAttempt is not { } attempted || !ReferenceEquals(attempted.Track, track) || attempted.ProcessId != window.Pid)
+                && (_automaticAttempt is not { } attempted || !ReferenceEquals(attempted.Track, track)
+                    || attempted.ProcessId != window.Pid || attempted.Count < 2)
                 && GetForegroundWindow() == window.Handle)
             {
                 var badge = Find(root, "AudioBadgeButton");
@@ -76,7 +79,10 @@ internal sealed class AppleMusicQualityReader
                     panel = Find(root, "AudioQualityFlyout");
                     if (panel is null && GetForegroundWindow() == window.Handle)
                     {
-                        _automaticAttempt = (track, window.Pid);
+                        var count = _automaticAttempt is { } previousAttempt
+                            && ReferenceEquals(previousAttempt.Track, track) && previousAttempt.ProcessId == window.Pid
+                            ? previousAttempt.Count + 1 : 1;
+                        _automaticAttempt = (track, window.Pid, count);
                         ((InvokePattern)invoke).Invoke();
                         for (var attempt = 0; attempt < 8; attempt++)
                         {
@@ -91,7 +97,7 @@ internal sealed class AppleMusicQualityReader
                     }
                 }
             }
-            if (panel is null || panel.Current.IsOffscreen) return null;
+            if (panel is null || panel.Current.IsOffscreen) return new(null, canRetry && !_automaticDismissalFailed);
             Format? previous = null;
             var sampleCount = ownedPanelId is null ? 1 : 5;
             for (var i = 0; i < sampleCount; i++)
@@ -102,16 +108,17 @@ internal sealed class AppleMusicQualityReader
                     .Select(label => Parse(label.Current.Name)).OfType<Format>().Distinct().Take(2).ToArray();
                 var format = formats.Length == 1 ? formats[0] : null;
                 if (format is not null && (sampleCount == 1 || format == previous))
-                    return !panel.Current.IsOffscreen && CaptionMatches(Find(root, "LCD")?.Current.Name, track) ? format : null;
+                    return !panel.Current.IsOffscreen && CaptionMatches(Find(root, "LCD")?.Current.Name, track)
+                        ? new(format) : new(null, canRetry);
                 previous = format;
                 if (i + 1 < sampleCount) Thread.Sleep(30);
             }
-            return null;
+            return new(null, canRetry);
         }
         catch (Exception error) when (error is ElementNotAvailableException or COMException or
             InvalidOperationException or ArgumentException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
-            return null;
+            return new(null);
         }
         finally
         {

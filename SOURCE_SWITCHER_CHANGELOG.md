@@ -1,5 +1,9 @@
 # Source Switcher changelog
 
+## v1.4.8
+
+- If Apple Music's track display is still updating, identification retries briefly within the current transition instead of waiting for a periodic refresh.
+
 ## v1.4.7
 
 - A playing Apple Music master stays selected through a brief stream restart between tracks, avoiding a round trip through another app.
