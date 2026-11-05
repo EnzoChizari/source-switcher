@@ -1086,9 +1086,12 @@ internal sealed class TrayContext : ApplicationContext
                 var firstReadStarted = previousRead.Track is null ? readStarted : previousRead.Started;
                 var readCount = Math.Min(previousRead.Count + 1, 3);
                 _lastAppleQualityRead = (track.Track, readStarted, firstReadStarted, readCount, false);
-                var automatic = _settings.AppleMusicAutoReadQuality && playbackSnapshot.AppleMusicPlayback == FavoritePlaybackState.Playing;
+                var automatic = _settings.AppleMusicAutoReadQuality;
                 var quality = await _appleQualityReader.ReadAsync(appleOnOutput, track.Track, automatic);
                 if (_exiting || epoch != _epoch) return;
+                if (readCount == 1 || quality.RetrySuggested)
+                    Log($"Apple Music identification read took {System.Diagnostics.Stopwatch.GetElapsedTime(readStarted).TotalMilliseconds:0} ms"
+                        + $"; automatic={automatic}, formatAvailable={quality.Format is not null}, retrySuggested={quality.RetrySuggested}.", "Timing");
                 var format = quality.Format;
                 if (format is not null && _monitor?.IsMetadataCurrent(track.Generation, appleOnOutput.Identity, appleOnOutput.SessionToken, 0, track.Track) == true)
                 {

@@ -1,5 +1,9 @@
 # Source Switcher changelog
 
+## v1.4.10
+
+- Foreground Apple Music identification can start while playback status is still settling after a track change. Output switching still waits for playback readiness.
+
 ## v1.4.9
 
 - Automatic Apple Music identification can run during the favorite handoff delay, before Apple Music becomes master.
