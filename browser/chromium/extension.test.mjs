@@ -46,6 +46,7 @@ function background(frameOptions) {
     extension: (kind, fields = {}) => new Promise(resolve => { messages.emit({ kind, ...fields }, {}, resolve); }),
     contentMessage: message => messages.emit(message, { tab: { id: 7 } }, () => { throw new Error("Content script cannot invoke actions"); }),
     setQuery: value => { query = value; }, setGet: value => { get = value; }, setProbe: value => { probe = value; },
+    permissionChanged: granted => { frameOptions.granted = granted; chrome.permissions.onRemoved.emit(); },
     request: async (id = a) => { ports.at(-1).onMessage.emit({ protocolVersion: 1, kind: "request", connectionNonce: b, requestId: id }); await flush(); },
     timeout: milliseconds => { for (const [id, timer] of [...timers]) if (timer.ms === milliseconds) { timers.delete(id); timer.callback(); } }
   };
@@ -106,6 +107,17 @@ test("an incomplete frame census cannot publish one inspected frame as unique me
   const state = background({ granted: true, frames });
   state.setProbe(async () => [{ result: { rate: 48000 } }]);
   await state.extension("followActiveTab"); await state.request();
+  assert.equal(state.sent.at(-1).decoderRateHz, null);
+});
+
+test("a permission change invalidates an observation already in flight", async () => {
+  const pending = deferred(), state = background({ granted: true, frames: [] });
+  state.setProbe(() => pending.promise);
+  await state.extension("followActiveTab"); await state.request();
+  state.permissionChanged(false);
+  pending.resolve([{ result: { rate: 96000 } }]); await flush();
+  assert.equal(state.sent.at(-1).kind, "clear");
+  assert.equal(state.sent.at(-1).clearReason, "unavailable");
   assert.equal(state.sent.at(-1).decoderRateHz, null);
 });
 test("auto-follow changes tab identity and clearing the checkbox keeps the current link", async () => {

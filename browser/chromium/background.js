@@ -68,6 +68,7 @@ importScripts("protocol.js", "site-access.js");
   }
   async function serve(request, native, generation) {
     const captured = selection, capturedGeneration = selectionGeneration;
+    const permissionVersion = sites.version();
     const post = message => { if (port !== native || generation !== portGeneration) return false; native.postMessage(message); return true; };
     const clear = reason => {
       if (post(protocol.reply(request, ++sequence, browserInstanceNonce, selection, reason))) {
@@ -83,6 +84,7 @@ importScripts("protocol.js", "site-access.js");
       const [tab, media] = await Promise.race([observe(captured.tabId),
         new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), 1250); })]);
       if (captured !== selection || capturedGeneration !== selectionGeneration) { clear(clearReason ?? "navigation"); return; }
+      if (permissionVersion !== sites.version()) { clear("unavailable"); return; }
       if (!tab || tab.id !== captured.tabId) { clearSelection("tabClosed"); clear("tabClosed"); return; }
       captured.title = protocol.title(tab.title);
       const rate = Number.isInteger(media?.rate) && media.rate >= 8000 && media.rate <= 768000 ? media.rate : null;

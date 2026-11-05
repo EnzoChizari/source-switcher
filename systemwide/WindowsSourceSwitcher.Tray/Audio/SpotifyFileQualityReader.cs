@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using System.Windows.Automation;
 using WindowsSourceSwitcher.Core;
 
@@ -31,19 +32,16 @@ internal sealed class SpotifyFileQualityReader
 
     private static Reading? Read(string sourceKey)
     {
-        var processes = Process.GetProcessesByName("Spotify");
+        var window = PlayerWindowLocator.Find("Spotify",
+            path => StringComparer.OrdinalIgnoreCase.Equals(SourceIdentity.FromExecutablePath(path), sourceKey));
+        return window is { } found ? ReadWindow(found.Handle) : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Reading? ReadWindow(nint window)
+    {
         try
         {
-            var window = nint.Zero;
-            foreach (var process in processes)
-            {
-                var candidate = process.MainWindowHandle;
-                if (candidate == nint.Zero || process.MainModule?.FileName is not { } path
-                    || !StringComparer.OrdinalIgnoreCase.Equals(SourceIdentity.FromExecutablePath(path), sourceKey)) continue;
-                if (window != nint.Zero) return null;
-                window = candidate;
-            }
-            if (window == nint.Zero) return null;
 
             var root = AutomationElement.FromHandle(window);
             var panel = root.FindFirst(TreeScope.Descendants,
@@ -64,7 +62,6 @@ internal sealed class SpotifyFileQualityReader
         {
             return null;
         }
-        finally { foreach (var process in processes) process.Dispose(); }
     }
 
     private static PropertyCondition Named(string name) => new(AutomationElement.NameProperty, name);

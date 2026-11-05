@@ -75,6 +75,10 @@ Select Fooyin as master and enable **Follow source bit depth (experimental)**. T
 
 ## Troubleshooting
 
+For a read-only resource measurement, use `tools/Measure-ProcessResources.ps1` from the source checkout with the running executable path and a new report file. It reports both whole-machine CPU (as in Task Manager) and CPU relative to one logical core, plus working set and private committed memory. See [performance notes](PERFORMANCE.md) for the tested scope.
+
+Maintainers can run `SourceSwitcher.exe --shutdown` before replacing files. This requests normal cleanup for that installation and Windows user; wait for the original process to exit. Closing the app's window still hides it to the tray.
+
 | Symptom | What to check |
 | --- | --- |
 | Auto keeps the same rate | Confirm the intended app is master and playing. Check **Diagnostics** for stream evidence and try the refresh control. If audio tracing is unavailable, relaunch with the required permissions. |

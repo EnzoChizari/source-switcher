@@ -1,5 +1,13 @@
 # Source Switcher changelog
 
+## v1.5.1
+
+- Use .NET's balanced memory-conservation setting to reduce retained memory after playback and format-detection bursts, without a hard heap cap or periodic forced collections.
+- Lower background overhead: browser permission grants are reused between polls, with immediate invalidation on changes and fresh frame checks on every observation.
+- Player-details readers avoid loading UI Automation for absent or minimized players. Visible-player reads keep their existing verification and timing.
+- Recover abandoned Source Switcher audio traces after crashes or forced exits, while preserving every live or inaccessible process's traces.
+- Add graceful local shutdown for maintenance and updates. Audio-trace cleanup is attempted even if another component fails during shutdown.
+
 ## v1.5.0
 
 - Chrome/Helium extension 0.5 adds optional early detection for one site or all websites. Supported Media Source headers can be captured before Follow, including bounded split initialization.

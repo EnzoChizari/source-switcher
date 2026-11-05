@@ -18,6 +18,11 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         try
         {
+            if (args.Length == 1 && args[0] == "--shutdown")
+            {
+                try { _ = InstanceShutdownSignal.Request(); return 0; }
+                catch (UnauthorizedAccessException) { return 1; }
+            }
             // Diagnostic modes never compose a format-writing host.
             if (args.Length == 3 && args[0] == "--update-read" && Version.TryParse(args[1], out var installed))
             {
@@ -317,6 +322,7 @@ internal static class Program
                 return 0;
             }
             using var context = new TrayContext(startHidden: startHidden);
+            using var shutdown = new InstanceShutdownSignal(context.RequestShutdown);
             Application.Run(context);
             return 0;
         }

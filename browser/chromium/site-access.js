@@ -2,7 +2,7 @@
 globalThis.DX5SiteAccess = (() => {
   const id = "source-switcher-early-media-v1";
   const files = ["stream-formats.js", "media-header.js", "mse-observer.js", "early-media.js"];
-  let queue = Promise.resolve(), error = "";
+  let queue = Promise.resolve(), error = "", permissionSnapshot, version = 0;
   const patterns = permissions => (permissions?.origins ?? []).filter(value => /^https?:\/\//.test(value)).sort();
   function matches(pattern, value) {
     try {
@@ -14,9 +14,19 @@ globalThis.DX5SiteAccess = (() => {
     } catch { return false; }
   }
   async function grants() {
-    return chrome.permissions?.getAll ? await chrome.permissions.getAll() : { origins: [], permissions: [] };
+    if (!chrome.permissions?.getAll) return { origins: [], permissions: [] };
+    if (!permissionSnapshot) {
+      const request = chrome.permissions.getAll().catch(error => {
+        if (permissionSnapshot === request) permissionSnapshot = undefined;
+        throw error;
+      });
+      permissionSnapshot = request;
+    }
+    return permissionSnapshot;
   }
   function sync() {
+    version++;
+    permissionSnapshot = undefined; // Permission events and explicit changes invalidate the cached grant.
     queue = queue.catch(() => {}).then(async () => {
       if (!chrome.scripting?.getRegisteredContentScripts || !chrome.permissions?.getAll) return;
       const matches = patterns(await grants());
@@ -66,5 +76,5 @@ globalThis.DX5SiteAccess = (() => {
         ...(frame.documentId ? { documentIds: [frame.documentId] } : { frameIds: [frame.frameId] }) })) };
     } catch { return { targets: [], truncated: true }; }
   }
-  return { sync, frames, matches, error: () => error };
+  return { sync, frames, matches, version: () => version, error: () => error };
 })();

@@ -2118,6 +2118,13 @@ internal sealed class TrayContext : ApplicationContext
         ], _history.Entries));
     }
 
+    internal void RequestShutdown()
+    {
+        if (_exiting || _popup.IsDisposed) return;
+        try { _popup.BeginInvoke(new Action(async () => await ShutdownAsync())); }
+        catch (InvalidOperationException) { /* A queued CLI request can race normal shutdown. */ }
+    }
+
     internal async Task ShutdownAsync()
     {
         if (_exiting) return;
@@ -2173,11 +2180,19 @@ internal sealed class TrayContext : ApplicationContext
                 await Task.Run(_sessionWatcher.Dispose);
             }
             if (_monitor is not null) await _monitor.DisposeAsync();
-            if (_streamMonitor is not null) { _streamMonitor.Changed -= StreamChanged; await _streamMonitor.DisposeAsync(); }
             _enumerator.Dispose();
             _volumes.Dispose();
         }
         catch (Exception ex) { Log(ex.ToString()); }
+        // ETW controllers outlive their owner if never stopped. Always attempt this
+        // cleanup even when a different component failed earlier in shutdown.
+        if (_streamMonitor is { } trace)
+        {
+            _streamMonitor = null;
+            trace.Changed -= StreamChanged;
+            try { await trace.DisposeAsync(); }
+            catch (Exception ex) { Log(ex.ToString()); }
+        }
         _icon.Visible = false;
         ExitThread();
     }

@@ -73,6 +73,12 @@ foreach ($required in 'SourceSwitcher.exe','coreclr.dll','WindowsSourceSwitcher.
 $processes = Get-Process SourceSwitcher,WindowsSourceSwitcher.BrowserHost -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -in @($launcher, $helper) }
 foreach ($process in $processes) {
+    if ($process.Path -ieq $launcher -and
+        [version](Get-Item -LiteralPath $launcher).VersionInfo.ProductVersion -ge [version]'1.5.1') {
+        $shutdown = Start-Process -FilePath $launcher -ArgumentList '--shutdown' -WindowStyle Hidden -PassThru -Wait
+        if ($shutdown.ExitCode -eq 0) { [void]$process.WaitForExit(15000) }
+    }
+    if ($process.HasExited) { continue }
     if ($process.CloseMainWindow()) { [void]$process.WaitForExit(1500) }
     if (!$process.HasExited) {
         Stop-Process -InputObject $process -Force

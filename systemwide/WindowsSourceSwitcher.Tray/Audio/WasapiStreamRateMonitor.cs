@@ -8,6 +8,8 @@ namespace WindowsSourceSwitcher.Tray.Audio;
 /// <summary>Observes format metadata only. It never captures samples, injects code, or changes a format.</summary>
 internal sealed class WasapiStreamRateMonitor : IAsyncDisposable
 {
+    // Stable across this process's retries, unique across process generations/PID reuse.
+    private static readonly string SessionName = $"DX5SourceSwitcher.StreamRates.{Environment.ProcessId}.{Guid.NewGuid():N}";
     private readonly object _sync = new();
     // Flush and dispose share a lifetime lock, independent of the tracker lock: the
     // reader must remain free to process callbacks while ControlTrace flushes/stops.
@@ -82,13 +84,14 @@ internal sealed class WasapiStreamRateMonitor : IAsyncDisposable
 
     public void Start()
     {
+        _ = OwnedAudioTraceSessions.RecoverAbandoned();
         lock (_sessionLifetime)
         lock (_sync)
         {
             if (_session is not null || _disposed) return;
             try
             {
-                _session = new TraceEventSession($"DX5SourceSwitcher.StreamRates.{Environment.ProcessId}",
+                _session = new TraceEventSession(SessionName,
                     TraceEventSessionOptions.Create | TraceEventSessionOptions.NoRestartOnCreate)
                 { StopOnDispose = true, BufferSizeMB = 4 };
                 var source = _session.Source;

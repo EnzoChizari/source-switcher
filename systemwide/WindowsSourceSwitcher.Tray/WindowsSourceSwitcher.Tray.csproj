@@ -9,13 +9,14 @@
     <Nullable>enable</Nullable>
     <RootNamespace>WindowsSourceSwitcher.Tray</RootNamespace>
     <AssemblyName>WindowsSourceSwitcher.Tray</AssemblyName>
-    <Version>1.5.0</Version>
+    <Version>1.5.1</Version>
     <ApplicationIcon>Assets/TrayMixerBlack.ico</ApplicationIcon>
     <Product>Source Switcher</Product>
     <Description>Experimental shared-mode master-source tray controller based on WindowsLosslessSwitcher.</Description>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <EmbeddedResource Include="Assets/TrayMixer*.ico" />
     <Compile Include="../WindowsSourceSwitcher.BrowserHost/WindowsBrowserPeerIdentity.cs" Link="Audio/WindowsBrowserPeerIdentity.cs" />
@@ -29,6 +30,7 @@
   </ItemGroup>
   <ItemGroup Condition="'$(FriendDistribution)' != 'true'">
     <None Include="../../SYSTEMWIDE.md" Link="SYSTEMWIDE.md" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../PERFORMANCE.md" Link="PERFORMANCE.md" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../../PORTABLE_README.md" Link="START_HERE.md" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../../IMPLEMENTATION_REPORT.md" Link="IMPLEMENTATION_REPORT.md" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../../DEVELOPMENT_ROADMAP.md" Link="DEVELOPMENT_ROADMAP.md" CopyToPublishDirectory="PreserveNewest" />

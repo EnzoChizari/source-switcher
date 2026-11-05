@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Automation;
@@ -38,20 +39,17 @@ internal sealed class AppleMusicQualityReader
 
     private Result Read(PlatformAudioSource source, TrackSnapshot track, bool automatic)
     {
-        var processes = Process.GetProcessesByName("AppleMusic");
+        var window = PlayerWindowLocator.Find("AppleMusic", path => AppleMusicIdentity.Equivalent(path, source.ExecutablePath));
+        return window is { } found ? ReadWindow(found, track, automatic) : new(null);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private Result ReadWindow((nint Handle, int Pid) window, TrackSnapshot track, bool automatic)
+    {
         AutomationElement? root = null;
         int[]? ownedPanelId = null;
         try
         {
-            var window = (Handle: nint.Zero, Pid: 0);
-            foreach (var process in processes)
-            {
-                var handle = process.MainWindowHandle;
-                if (handle == nint.Zero || !AppleMusicIdentity.Equivalent(process.MainModule?.FileName, source.ExecutablePath)) continue;
-                if (window.Handle != nint.Zero) return new(null);
-                window = (handle, process.Id);
-            }
-            if (window.Handle == nint.Zero) return new(null);
             root = AutomationElement.FromHandle(window.Handle);
             if (root.Current.ProcessId != window.Pid || root.Current.IsOffscreen) return new(null);
             var canRetry = automatic && GetForegroundWindow() == window.Handle;
@@ -124,7 +122,6 @@ internal sealed class AppleMusicQualityReader
         {
             if (root is not null && ownedPanelId is not null && !DismissOwnedPanel(root, ownedPanelId))
                 _automaticDismissalFailed = true;
-            foreach (var process in processes) process.Dispose();
         }
     }
 
