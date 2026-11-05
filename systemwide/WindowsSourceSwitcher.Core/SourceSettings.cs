@@ -11,6 +11,7 @@ public sealed class SourceSettings
     public bool FullscreenAutoSwitchEnabled { get; set; }
     public bool BrowserRateDetectionEnabled { get; set; }
     public bool CatalogRateDetectionEnabled { get; set; }
+    public bool AppleMusicAutoReadQuality { get; set; } = true;
     public bool TutorialPending { get; set; }
     public string? TargetEndpointId { get; set; }
     public string? SelectedSourceKey { get; set; }

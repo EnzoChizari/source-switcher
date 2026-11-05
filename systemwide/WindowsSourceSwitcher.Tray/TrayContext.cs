@@ -34,8 +34,8 @@ internal sealed class TrayContext : ApplicationContext
     private readonly CancellationTokenSource _appleSwitchLifetime = new();
     private readonly AppleMusicHandoffProtection _appleHandoff = new();
     private readonly AppleMusicQualityReader _appleQualityReader = new();
-    private (TrackSnapshot Track, long Generation, string Session, AppleMusicQualityReader.Format Format)? _appleQuality;
-    private long? _lastAppleQualityRead;
+    private (TrackSnapshot Track, long Generation, string Session, IReadOnlyList<int> ProcessIds, AppleMusicQualityReader.Format Format)? _appleQuality;
+    private (TrackSnapshot Track, long Timestamp)? _lastAppleQualityRead;
     private string _appleSwitchDetail = "Apple Music switches while rendering; signal and timeline recovery are checked.";
     private string? _appleSwitchFailureKey;
     private (string Key, string Detail)? _appleRejectedReduction;
@@ -84,6 +84,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly bool _diagnosticsMode;
     private AutomaticRateMonitor? _monitor;
     private WasapiStreamRateMonitor? _streamMonitor;
+    private Task _streamCensusTask = Task.CompletedTask;
     private readonly StreamObserverRecovery _streamRecovery = new();
     private bool _streamFailureReported;
     private volatile bool _suspended;
@@ -245,6 +246,7 @@ internal sealed class TrayContext : ApplicationContext
         });
         _popup.SwitchingEnabledChanged += enabled => Change(() => _settings.SwitchingEnabled = enabled);
         _popup.CatalogChanged += enabled => Change(() => { _settings.CatalogRateDetectionEnabled = enabled; InvalidateObservation(); });
+        _popup.AppleAutoReadChanged += enabled => Change(() => _settings.AppleMusicAutoReadQuality = enabled);
         _popup.FollowBitDepthChanged += enabled => Change(() => _settings.FollowSourceBitDepth = enabled);
         _popup.StreamDetectionChanged += enabled => Change(() =>
         {
@@ -900,6 +902,19 @@ internal sealed class TrayContext : ApplicationContext
         });
     }
 
+    private async Task RefreshStreamCensusAsync(WasapiStreamRateMonitor monitor)
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        try { await Task.Run(monitor.RefreshExistingStreams); }
+        catch (Exception error)
+        {
+            Log("Existing-stream snapshot failed: " + error.Message, "Timing");
+            return;
+        }
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        if (elapsed >= 250) Log($"Audio refresh timing: existing-stream snapshot {elapsed:0} ms.", "Timing");
+    }
+
     private async Task RefreshAsync(bool captureSources)
     {
         _refreshing = true;
@@ -996,10 +1011,13 @@ internal sealed class TrayContext : ApplicationContext
                 // A full session census also revalidates service state. In particular,
                 // the final stability check must not apply an earlier rundown's rate.
                 if (captureSources) streamMonitor.InvalidateExistingStreams();
-                var streamRefreshStarted = System.Diagnostics.Stopwatch.GetTimestamp();
-                await Task.Run(streamMonitor.RefreshExistingStreams);
-                var streamRefreshMs = System.Diagnostics.Stopwatch.GetElapsedTime(streamRefreshStarted).TotalMilliseconds;
-                if (streamRefreshMs >= 250) Log($"Audio refresh timing: existing-stream snapshot {streamRefreshMs:0} ms.", "Timing");
+                if (_streamCensusTask.IsCompleted && streamMonitor.NeedsExistingStreamRefresh)
+                    _streamCensusTask = RefreshStreamCensusAsync(streamMonitor);
+                // Apple track decisions use the player or catalog monitor, independently
+                // of the existing-stream trace. Other masters still await fresh evidence.
+                if (!_settings.CatalogRateDetectionEnabled || !snapshot.Sources.Any(source =>
+                    source.SupportsAutomaticRate && source.Identity == _settings.SelectedSourceKey))
+                    await _streamCensusTask;
             }
             if (_exiting || epoch != _epoch) return;
             var observedStreamVersion = _streamMonitor?.Version ?? -1;
@@ -1029,18 +1047,29 @@ internal sealed class TrayContext : ApplicationContext
             var catalogSession = _observation?.SessionToken;
             var appleSource = appleOnOutput?.Identity == selectedKey ? appleOnOutput : null;
             var appleTrack = appleOnOutput is null ? null : _monitor?.GetCurrentTrack(appleOnOutput);
+            // An endpoint format change can rebuild WASAPI sessions without changing the track
+            // or player. Rebind the measured track evidence to the monitor's fresh session.
+            if (appleTrack is { } refreshed && appleOnOutput is not null && _appleQuality is { } previousQuality
+                && ReferenceEquals(previousQuality.Track, refreshed.Track)
+                && appleOnOutput.ProcessIds.Any(previousQuality.ProcessIds.Contains))
+                _appleQuality = (refreshed.Track, refreshed.Generation, appleOnOutput.SessionToken, appleOnOutput.ProcessIds, previousQuality.Format);
             if (appleTrack is { } track && appleOnOutput is not null
                 && (_appleQuality is not { } cached || !ReferenceEquals(cached.Track, track.Track)
                     || cached.Generation != track.Generation || cached.Session != appleOnOutput.SessionToken)
                 && (appleSource is not null || _popup.Visible)
-                && (_lastAppleQualityRead is not { } lastRead
-                    || System.Diagnostics.Stopwatch.GetElapsedTime(lastRead) >= TimeSpan.FromSeconds(1)))
+                && (_lastAppleQualityRead is not { } lastRead || !ReferenceEquals(lastRead.Track, track.Track)
+                    || System.Diagnostics.Stopwatch.GetElapsedTime(lastRead.Timestamp) >= TimeSpan.FromSeconds(1)))
             {
-                _lastAppleQualityRead = System.Diagnostics.Stopwatch.GetTimestamp();
-                var format = await _appleQualityReader.ReadAsync(appleOnOutput, track.Track);
+                _lastAppleQualityRead = (track.Track, System.Diagnostics.Stopwatch.GetTimestamp());
+                var automatic = _settings.AppleMusicAutoReadQuality && playbackSnapshot.AppleMusicPlayback == FavoritePlaybackState.Playing;
+                var format = await _appleQualityReader.ReadAsync(appleOnOutput, track.Track, automatic);
                 if (_exiting || epoch != _epoch) return;
                 if (format is not null && _monitor?.IsMetadataCurrent(track.Generation, appleOnOutput.Identity, appleOnOutput.SessionToken, 0, track.Track) == true)
-                    _appleQuality = (track.Track, track.Generation, appleOnOutput.SessionToken, format);
+                {
+                    _appleQuality = (track.Track, track.Generation, appleOnOutput.SessionToken, appleOnOutput.ProcessIds, format);
+                    Log($"Apple Music Lossless details report {SourcePopup.FormatRate(format.Rate)}"
+                        + (format.Bits is { } reportedBits ? $" · {reportedBits}-bit." : " · depth unavailable."), "Apple Music");
+                }
             }
             var appleObservation = GetAppleQualityObservation(appleOnOutput);
             var appleReported = appleSource is not null ? appleObservation : null;
@@ -1387,6 +1416,12 @@ internal sealed class TrayContext : ApplicationContext
                                 // overtake and discard its own readback notification.
                                 _popup.Invoke(new Action(() => PublishAppleFormatConfirmation(
                                     formatOperation, ContextCurrent, device, mix)));
+                                if (appleTrack is { } timedTrack)
+                                {
+                                    var elapsed = (DateTimeOffset.UtcNow - timedTrack.Track.DetectedAtUtc).TotalMilliseconds;
+                                    if (elapsed is >= 0 and <= 10000)
+                                        Log($"Apple Music timing: output confirmed {elapsed:0} ms after track metadata.", "Timing");
+                                }
                             }
                             catch (InvalidOperationException) { /* Closing or recreating the owned window. */ }
                         }, allowSilentDepthIncrease, automaticAppleReduction ? RestoreApple : null,
@@ -1811,6 +1846,7 @@ internal sealed class TrayContext : ApplicationContext
                 _streamObservations = new Dictionary<string, RateObservation>();
                 _candidateKey = null;
                 _stabilityTimer.Stop();
+                await _streamCensusTask;
                 await previous.DisposeAsync();
             }
         }
@@ -2066,6 +2102,7 @@ internal sealed class TrayContext : ApplicationContext
         try
         {
             await _refreshTask;
+            await _streamCensusTask;
             await _flushTask;
             await _mixerTask;
             await _favoriteCycleTask;

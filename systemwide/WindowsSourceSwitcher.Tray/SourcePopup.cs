@@ -20,6 +20,8 @@ internal sealed class SourcePopup : Form
     private readonly CheckBox _enabled = new MinimalCheckBox() { AutoSize = true, Text = "Enable switching", Checked = true };
     private readonly CheckBox _catalog = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
         Text = "Use Apple Music track format (catalog fallback)" };
+    private readonly CheckBox _appleAutoRead = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
+        Text = "Read Apple Music Lossless details automatically" };
     private readonly CheckBox _streamDetection = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
         Text = "Auto-detect application stream rate" };
     private readonly CheckBox _followBits = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
@@ -68,6 +70,7 @@ internal sealed class SourcePopup : Form
     public event Action<int?>? BitDepthSelected;
     public event Action<bool>? SwitchingEnabledChanged;
     public event Action<bool>? CatalogChanged;
+    public event Action<bool>? AppleAutoReadChanged;
     public event Action<bool>? FollowBitDepthChanged;
     public event Action<bool>? StreamDetectionChanged;
     public event Action<bool>? GlobalHotkeysChanged;
@@ -217,7 +220,7 @@ internal sealed class SourcePopup : Form
         var sourceViewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
         sourceViewport.Controls.Add(layout);
         _sourcesTab.Controls.Add(sourceViewport);
-        _controls.SetDetectionControls(_streamDetection, _catalog, _followBits);
+        _controls.SetDetectionControls(_streamDetection, _catalog, _appleAutoRead, _followBits);
         _mixerTab.Controls.Add(_mixer);
         _controlsTab.Controls.Add(_controls);
         _diagnosticsTab.Controls.Add(_diagnostics);
@@ -260,6 +263,7 @@ internal sealed class SourcePopup : Form
         _depths.SelectedIndexChanged += (_, _) => { if (!_rendering && _depths.SelectedItem is DepthChoice depth) BitDepthSelected?.Invoke(depth.Bits); };
         _enabled.CheckedChanged += (_, _) => { if (!_rendering) SwitchingEnabledChanged?.Invoke(_enabled.Checked); };
         _catalog.CheckedChanged += (_, _) => { if (!_rendering) CatalogChanged?.Invoke(_catalog.Checked); };
+        _appleAutoRead.CheckedChanged += (_, _) => { if (!_rendering) AppleAutoReadChanged?.Invoke(_appleAutoRead.Checked); };
         _streamDetection.CheckedChanged += (_, _) => { if (!_rendering) StreamDetectionChanged?.Invoke(_streamDetection.Checked); };
         _followBits.CheckedChanged += (_, _) => { if (!_rendering) FollowBitDepthChanged?.Invoke(_followBits.Checked); };
         _refresh.Click += (_, _) => RetryRequested?.Invoke();
@@ -276,6 +280,7 @@ internal sealed class SourcePopup : Form
         };
         _tips.SetToolTip(_pin, "◆ Pins persist across restarts. Playing pinned apps rank below favorites and above regular apps when automatic source priority is on.");
         _tips.SetToolTip(_catalog, "Apple Music only; this does not detect rates for Spotify, browsers, or other apps. Catalog metadata describes an available lossless asset, not the actual decoded stream. Off by default.");
+        _tips.SetToolTip(_appleAutoRead, "When Apple Music is in front, briefly read and close its Lossless details for the current track. Requires Apple Music track format detection.");
         _tips.SetToolTip(_streamDetection, "Reads current Windows Audio Service stream formats and observes WASAPI stream changes. Requires administrator or ETW permissions. This is submitted PCM; apps may resample media internally. Unsupported Windows schemas remain unknown.");
         _tips.SetToolTip(_rates, "Overrides are saved by executable path. The list shows rates the output reports for the current or manually chosen depth and channel count.");
         _tips.SetToolTip(_depths, "Enable Follow source bit depth in Settings to use experimental Auto or save an exact depth for this master.");
@@ -567,6 +572,8 @@ internal sealed class SourcePopup : Form
             }
             _enabled.Checked = settings.SwitchingEnabled;
             _catalog.Checked = settings.CatalogRateDetectionEnabled;
+            _appleAutoRead.Checked = settings.AppleMusicAutoReadQuality;
+            _appleAutoRead.Enabled = settings.CatalogRateDetectionEnabled && !applying;
             _streamDetection.Checked = settings.StreamRateDetectionEnabled;
             _followBits.Checked = settings.FollowSourceBitDepth;
             _followBits.Enabled = !applying;

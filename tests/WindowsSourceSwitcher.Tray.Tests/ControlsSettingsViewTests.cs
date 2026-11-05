@@ -42,6 +42,25 @@ public sealed class ControlsSettingsViewTests
     });
 
     [Fact]
+    public void Apple_automatic_quality_read_requires_Apple_detection_and_can_be_disabled_separately() => OnSta(() =>
+    {
+        using var popup = new SourcePopup();
+        var requests = new List<bool>();
+        popup.AppleAutoReadChanged += requests.Add;
+        var settings = new SourceSettings();
+        popup.Render([], [], [], null, settings, "Status", "Evidence", false);
+        var choice = Find<CheckBox>(popup).Single(control => control.Text == "Read Apple Music Lossless details automatically");
+        Assert.True(choice.Checked);
+        Assert.False(choice.Enabled);
+        settings.CatalogRateDetectionEnabled = true;
+        popup.Render([], [], [], null, settings, "Status", "Evidence", false);
+        Assert.True(choice.Enabled);
+        Assert.Empty(requests);
+        choice.Checked = false;
+        Assert.Equal([false], requests);
+    });
+
+    [Fact]
     public void Favorite_auto_switch_is_opt_in_and_only_explicit_changes_raise_requests() => OnSta(() =>
     {
         using var view = new ControlsSettingsView();

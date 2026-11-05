@@ -1,5 +1,11 @@
 # Source Switcher changelog
 
+## v1.4.6
+
+- Source Switcher can read the Lossless details automatically when Apple Music is in front. It briefly opens its own panel for the current track and closes it after reading. The new setting can be disabled independently of catalog fallback.
+- An Apple Music player report stays valid through Windows stream rebuilds when the monitor confirms the same track and player process.
+- Apple Music track-format switching no longer waits on the separate Windows stream census.
+
 ## v1.4.5
 
 - Apple Music can retry a guarded format recovery when the session remains silent after the first check.
