@@ -10,6 +10,28 @@ namespace WindowsSourceSwitcher.Tray.Tests;
 
 public sealed class GitHubUpdateTests
 {
+    [Fact]
+    public async Task PublicReleaseCanBeCheckedWithoutCredentials()
+    {
+        using var client = new HttpClient(new PublicReleaseHandler());
+        var release = await new GitHubUpdateFeed(client).CheckAsync(new Version(1, 3, 2), "", CancellationToken.None);
+        Assert.Equal(new Version(1, 4, 0), release?.Version);
+    }
+
+    [Fact]
+    public async Task PublicAssetCanBeVerifiedWithoutCredentials()
+    {
+        var payload = "test"u8.ToArray();
+        using var client = new HttpClient(new AssetHandler(payload, request => Assert.Null(request.Headers.Authorization)));
+        var destination = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".zip");
+        try
+        {
+            await new GitHubUpdateFeed(client).DownloadAsync(new(new Version(1, 4, 0), 7, payload.Length,
+                Convert.ToHexString(SHA256.HashData(payload))), "", destination, CancellationToken.None);
+            Assert.Equal(payload, File.ReadAllBytes(destination));
+        }
+        finally { File.Delete(destination); }
+    }
     [Theory]
     [InlineData("v1.1.0", false, false, true)]
     [InlineData("v1.1.0", true, false, false)]
@@ -90,13 +112,30 @@ public sealed class GitHubUpdateTests
         finally { directory.Delete(recursive: true); }
     }
 
-    private sealed class AssetHandler(byte[] payload) : HttpMessageHandler
+    private sealed class AssetHandler(byte[] payload, Action<HttpRequestMessage>? inspect = null) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            inspect?.Invoke(request);
             Assert.Equal("api.github.com", request.RequestUri!.Host);
             Assert.Equal("application/octet-stream", Assert.Single(request.Headers.Accept).MediaType);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) });
+        }
+    }
+
+    private sealed class PublicReleaseHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Assert.Null(request.Headers.Authorization);
+            Assert.Equal("https://api.github.com/repos/EnzoChizari/source-switcher/releases/latest", request.RequestUri!.AbsoluteUri);
+            var json = JsonSerializer.Serialize(new
+            {
+                tag_name = "v1.4.0", draft = false, prerelease = false,
+                assets = new[] { new { name = "SourceSwitcher-v1.4.0-win-x64.zip", state = "uploaded", id = 7,
+                    size = 123, digest = "sha256:" + new string('a', 64) } }
+            });
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) });
         }
     }
 }

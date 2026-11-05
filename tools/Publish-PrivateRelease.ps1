@@ -25,7 +25,7 @@ if ((Test-Path -LiteralPath $package) -or (Test-Path -LiteralPath $source)) { th
 
 if ($FromActions) {
     if ($env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_REPOSITORY -cne $slug -or $env:GITHUB_REF -cne 'refs/heads/main') {
-        throw 'Automatic publishing is restricted to the private repository main branch.'
+        throw 'Automatic publishing is restricted to the Source Switcher repository main branch.'
     }
     $token = $env:GITHUB_TOKEN
     $commit = $env:GITHUB_SHA
@@ -39,7 +39,7 @@ if ($FromActions) {
 if (!$token) { throw 'GitHub credentials are unavailable.' }
 $headers = @{ Authorization = "Bearer $token"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
 $repository = Invoke-RestMethod $api -Headers $headers -TimeoutSec 30
-if (!$repository.private -or $repository.full_name -cne $slug) { throw 'The intended repository is unavailable or is no longer private.' }
+if ($repository.full_name -cne $slug) { throw 'GitHub did not confirm the intended Source Switcher repository.' }
 if (!$FromActions) {
     $commit = (Invoke-RestMethod "$api/git/ref/heads/main" -Headers $headers -TimeoutSec 30).object.sha
 }

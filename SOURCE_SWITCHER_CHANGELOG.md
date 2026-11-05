@@ -1,78 +1,15 @@
 # Source Switcher changelog
 
-## v1.5.1
-
-- Use .NET's balanced memory-conservation setting to reduce retained memory after playback and format-detection bursts, without a hard heap cap or periodic forced collections.
-- Lower background overhead: browser permission grants are reused between polls, with immediate invalidation on changes and fresh frame checks on every observation.
-- Player-details readers avoid loading UI Automation for absent or minimized players. Visible-player reads keep their existing verification and timing.
-- Recover abandoned Source Switcher audio traces after crashes or forced exits, while preserving every live or inaccessible process's traces.
-- Add graceful local shutdown for maintenance and updates. Audio-trace cleanup is attempted even if another component fails during shutdown.
-
-## v1.5.0
-
-- Chrome/Helium extension 0.5 adds optional early detection for one site or all websites. Supported Media Source headers can be captured before Follow, including bounded split initialization.
-- Embedded-player inspection now follows granted sites and same-origin frames rather than a fixed Kodik host list. Ambiguous simultaneous players and the 16-frame limit withhold a target.
-- Early page observers retain bounded format metadata without a repeating timer. Default access remains temporary; website permissions are optional. Reload the extension and player tabs after updating.
-
-## v1.4.10
-
-- Foreground Apple Music identification can start while playback status is still settling after a track change. Output switching still waits for playback readiness.
-
-## v1.4.9
-
-- Automatic Apple Music identification can run during the favorite handoff delay, before Apple Music becomes master.
-
-## v1.4.8
-
-- If Apple Music's track display is still updating, identification retries briefly within the current transition instead of waiting for a periodic refresh.
-
-## v1.4.7
-
-- A playing Apple Music master stays selected through a brief stream restart between tracks, avoiding a round trip through another app.
-- Automatic Lossless reads allow a short wait for the player caption to catch up with the track notification.
-
-## v1.4.6
-
-- Source Switcher can read the Lossless details automatically when Apple Music is in front. It briefly opens its own panel for the current track and closes it after reading. The new setting can be disabled independently of catalog fallback.
-- An Apple Music player report stays valid through Windows stream rebuilds when the monitor confirms the same track and player process.
-- Apple Music track-format switching no longer waits on the separate Windows stream census.
-
-## v1.4.5
-
-- Apple Music can retry a guarded format recovery when the session remains silent after the first check.
-- A confirmed silent Apple Music session can recover faster from legacy 16-bit at the same rate. Automatic handoffs to another app prefer extensible 16-bit while Apple Music still has a session on that output.
-
-## v1.4.4
-
-- Apple Music prefers the driver's extensible PCM format for 16-bit output. This preserves the actual 16-bit depth when the legacy format makes Apple Music silent.
-- If Apple Music is already silent on a legacy 16-bit output, Source Switcher can change the format description and keep the requested 16-bit depth. Other apps keep their existing format selection.
-- Sources show known bit depths before the sample rate, with the same evidence labels.
-
-## v1.4.3
-
-- Apple Music can recover a silent 16-bit output by trying a higher supported depth while the track is still advancing. If silence persists after the change, Source Switcher can ask Apple Music once to reload its current playback position.
-- Auto can lower Apple Music's output depth to a supported track depth and restore the previous format if playback stays silent. Once 16-bit fails on an output, Apple Music Auto avoids lowering back to it for the rest of the run. The track depth and Windows output depth stay separate.
-- A manual Apple Music bit depth can apply at the current output rate while the player is paused or track format evidence is unavailable.
-
-## v1.4.2
-
-- Automatic handoffs hold the selected output format while Apple Music is still playing through that output.
-- Apple Music's open Lossless details can supply the current track's reported ALAC rate and depth. Catalog values remain labeled as estimates when the panel is unavailable.
-- If the panel gives an ALAC rate without a bit depth, the output keeps its current depth.
-
-## v1.4.1
-
-- Spotify Auto reads 16- or 24-bit lossless from the desktop player's open File quality card. Without that card, Auto keeps the current depth while following the observed Windows rate.
-
 ## v1.4.0
 
-- Apple Music Auto can raise the output bit depth from a catalog estimate and keeps that depth across lower-depth tracks to avoid repeat interruptions. Manual depth overrides remain available.
-- Apple Music keeps its controls enabled while waiting for a live signal and shows a steady status during retries.
-- Linked Chrome and Helium tabs can supply the bit depth of supported integer WAV and native FLAC files. Fooyin can use its Now Playing track export. Spotify, VLC, Fooyin, and browsers keep depth when their only evidence is converted Windows PCM.
-- Source Switcher Tab Link supports opt-in Kodik frame inspection, retries one transient file-header read, and distinguishes tab audio activity from available format evidence.
-- Added extension installation, reload steps, and Fooyin setup to the main README.
-- Checks for updates at startup and every 30 minutes while running. Installation still starts from the update dialog.
-- Shows a small amber exclamation badge on the tray icon when an update is available.
+- Improved Apple Music format identification and switching recovery, including compatible 16-bit output. Lossless details can be read automatically while Apple Music is in front. Catalog fallback remains an estimate.
+- Spotify can read 16- or 24-bit lossless from its open File quality card. Fooyin track exports and linked integer WAV/native FLAC headers can supply source depth. Unknown or converted float precision holds the current depth; automatic depth remains experimental.
+- Chrome/Helium extension 0.5.1 adds optional early detection on one site or all websites, including permitted embedded players. Supported stream headers can be captured before Follow. Protected, inaccessible and unsupported media can remain unknown.
+- Reduced background work and retained memory. The balanced runtime memory policy preserves detector deadlines and mixer cadence. Local controller checks were around 128–150 MiB RAM and 0.15% average CPU during browser playback; startup and switching can have higher peaks.
+- Recover abandoned audio traces after crashes, add graceful shutdown for maintenance, and avoid unnecessary player UI-component loading. Browser grants are cached with permission-change invalidation and fresh frame checks.
+- Sources display known bit depth before sample rate. Stability fixes retain master selection through brief Apple Music stream restarts and improve pause/handoff handling.
+- Update checks run at startup and every 30 minutes, with an amber tray/Settings badge and a changelog before installation. Public release updates no longer require GitHub sign-in.
+- Windows x64 ZIP includes the desktop runtime, browser helper/extension, license notices and corresponding source. Reload the extension after updating. Windows/shared-mode conversion and player-specific limitations still apply.
 
 ## v1.3.2
 

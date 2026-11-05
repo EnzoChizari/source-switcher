@@ -22,7 +22,7 @@ internal sealed class GitHubUpdateFeed(HttpClient http)
         using var request = Request(Api + "latest", "application/vnd.github+json", token);
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.NotFound)
-            throw new InvalidOperationException("GitHub could not read the private release feed. Check repository access and sign-in.");
+            throw new InvalidOperationException("GitHub could not read the release feed. Check repository access and sign-in.");
         response.EnsureSuccessStatusCode();
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var body = new MemoryStream();
@@ -82,7 +82,8 @@ internal sealed class GitHubUpdateFeed(HttpClient http)
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.UserAgent.ParseAdd("SourceSwitcher");
         request.Headers.Accept.ParseAdd(accept);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (!string.IsNullOrWhiteSpace(token))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return request;
     }
 

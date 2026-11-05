@@ -392,10 +392,8 @@ internal sealed class TrayContext : ApplicationContext
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_updateLifetime.Token);
             timeout.CancelAfter(TimeSpan.FromSeconds(12));
-            var token = await GitHubUpdateFeed.ReadCredentialAsync(timeout.Token);
-            if (token is null)
-                status = "GitHub sign-in is required. In Git for Windows, run git credential-manager github login --browser, then check again.";
-            else if (install && _availableUpdate is { } release)
+            var token = await GitHubUpdateFeed.ReadCredentialAsync(timeout.Token) ?? string.Empty;
+            if (install && _availableUpdate is { } release)
             {
                 timeout.CancelAfter(TimeSpan.FromMinutes(5));
                 await PortableUpdateInstaller.PrepareAndScheduleAsync(_updateFeed, release, token, timeout.Token);
@@ -415,7 +413,7 @@ internal sealed class TrayContext : ApplicationContext
         catch (OperationCanceledException) { status = "The update request timed out. Try again."; }
         catch (InvalidDataException) { status = "The release package could not be verified."; }
         catch (Exception) { status = install ? "The update could not be prepared. Check access, free space, and the app folder."
-            : "Could not check GitHub. Check your connection and private repository access."; }
+            : "Could not check GitHub. Check your connection and repository access."; }
         finally { _updateBusy = false; }
 
         if (!_exiting)

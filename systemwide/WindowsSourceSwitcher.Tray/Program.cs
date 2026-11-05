@@ -29,13 +29,8 @@ internal static class Program
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
                 using var http = new HttpClient();
                 var token = GitHubUpdateFeed.ReadCredentialAsync(timeout.Token).GetAwaiter().GetResult();
-                if (token is null)
-                {
-                    WriteJson(args[2], new { CredentialAvailable = false });
-                    return 1;
-                }
-                var release = new GitHubUpdateFeed(http).CheckAsync(installed, token, timeout.Token).GetAwaiter().GetResult();
-                WriteJson(args[2], new { CredentialAvailable = true, Installed = installed.ToString(), Available = release?.Version.ToString() });
+                var release = new GitHubUpdateFeed(http).CheckAsync(installed, token ?? string.Empty, timeout.Token).GetAwaiter().GetResult();
+                WriteJson(args[2], new { CredentialAvailable = token is not null, Installed = installed.ToString(), Available = release?.Version.ToString() });
                 return 0;
             }
             if (args.Length == 2 && args[0] == "--playback-read")
@@ -328,7 +323,7 @@ internal static class Program
         }
         catch (Exception) when (args.Length == 3 && args[0] == "--update-read")
         {
-            WriteJson(args[2], new { Error = "Could not read the private update feed." });
+            WriteJson(args[2], new { Error = "Could not read the release feed." });
             return 1;
         }
         catch (Exception ex)

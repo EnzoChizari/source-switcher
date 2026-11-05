@@ -2,7 +2,7 @@
 
 Normal-use targets are approximately 100–150 MiB total process working set and 0–0.5% whole-machine CPU. These are measurement targets, not hard memory limits or guarantees on every PC. Updates, device probing and first-use player integrations can have higher transient costs.
 
-The final v1.5.1 build uses .NET's supported `System.GC.ConserveMemory=5` setting. Detector deadlines, audio evidence checks and mixer cadence stay unchanged. It does not impose a hard heap cap, periodically force garbage collection, trim the Windows working set, change process priority, or reduce sample-rate checks to meet a display number. Microsoft's [runtime guidance](https://learn.microsoft.com/en-us/dotnet/core/runtime-config/garbage-collector#conserve-memory) explains the possible tradeoff of more collections and longer pauses; this setting was selected after functional, UI and live browser checks.
+The v1.4.0 release uses .NET's supported `System.GC.ConserveMemory=5` setting. Detector deadlines, audio evidence checks and mixer cadence stay unchanged. It does not impose a hard heap cap, periodically force garbage collection, trim the Windows working set, change process priority, or reduce sample-rate checks to meet a display number. Microsoft's [runtime guidance](https://learn.microsoft.com/en-us/dotnet/core/runtime-config/garbage-collector#conserve-memory) explains the possible tradeoff of more collections and longer pauses; this setting was selected after functional, UI and live browser checks.
 
 Changes:
 
@@ -15,10 +15,10 @@ Local evidence from Windows 11 x64, 16 logical processors:
 
 | Check | Total working set | Whole-machine CPU | Scope |
 | --- | --- | --- | --- |
-| Healthy hidden controller after reclaiming 16 abandoned traces | 125–127 MiB | 0.020% average | 25-second live sample; v1.5.0 before code changes |
-| v1.5.1 UI stress scenario | up to 121 MiB | 0.36% average | 25 seconds, real popup tabs refreshed at 20 Hz, UI Automation loaded, real read-only audio/media observers |
-| Installed v1.5.1, hidden, initial default-GC candidate | 119–132 MiB | 0.024% average | 60-second process-counter sample after graceful restart and browser regression |
-| Installed v1.5.1, active browser link, initial default-GC candidate | 134–152 MiB | 0.082% average | 50 seconds, 171 native requests, actual WAV/MSE fixtures and normal automatic source changes |
+| Healthy hidden controller after reclaiming 16 abandoned traces | 125–127 MiB | 0.020% average | 25-second live sample; pre-release build before code changes |
+| Pre-release UI stress scenario | up to 121 MiB | 0.36% average | 25 seconds, real popup tabs refreshed at 20 Hz, UI Automation loaded, real read-only audio/media observers |
+| Installed pre-release candidate, hidden, initial default-GC candidate | 119–132 MiB | 0.024% average | 60-second process-counter sample after graceful restart and browser regression |
+| Installed pre-release candidate, active browser link, initial default-GC candidate | 134–152 MiB | 0.082% average | 50 seconds, 171 native requests, actual WAV/MSE fixtures and normal automatic source changes |
 | Memory-conservation-5 candidate, active browser link | 119–138 MiB | 0.150% average | 50 seconds, actual WAV/MSE fixtures and normal automatic controller; about 138 MiB after an additional eight-stream probe |
 
 These figures cover the controller process; browser/helper processes are separate. The initial hidden sample had a brief one-second CPU peak of 0.58%. Initial active-browser candidate peaks were 1.26% with default GC and 1.55% with memory conservation, mostly during startup/source changes. Averages do not establish a fixed CPU ceiling. The normal controller selected the browser and then returned to Discord; its automatic source policy was enabled. Process-counter sampling and the fixture do not explicitly write endpoint formats.

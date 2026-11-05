@@ -16,7 +16,7 @@ try {
     if (!$token) { throw 'GitHub sign-in is unavailable.' }
     $headers = @{ Authorization = "Bearer $token"; Accept = 'application/vnd.github+json' }
     $repo = Invoke-RestMethod "https://api.github.com/repos/$slug" -Headers $headers -TimeoutSec 20
-    if (!$repo.private -or $repo.full_name -cne $slug) { throw 'GitHub did not confirm repository privacy.' }
+    if ($repo.full_name -cne $slug) { throw 'GitHub did not confirm the intended Source Switcher repository.' }
     git push private HEAD:refs/heads/main
     if ($LASTEXITCODE -ne 0) { throw 'GitHub rejected the push.' }
 } catch {

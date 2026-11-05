@@ -40,7 +40,7 @@ if (!$token) { throw 'GitHub sign-in is unavailable.' }
 $api = "https://api.github.com/repos/$slug"
 $headers = @{ Authorization = "Bearer $token"; Accept = 'application/vnd.github+json' }
 $private = Invoke-RestMethod $api -Headers $headers -TimeoutSec 30
-if (!$private.private -or $private.full_name -cne $slug) { throw 'GitHub did not confirm repository privacy.' }
+if ($private.full_name -cne $slug) { throw 'GitHub did not confirm the intended Source Switcher repository.' }
 $release = Invoke-RestMethod "$api/releases/latest" -Headers $headers -TimeoutSec 30
 if ($release.tag_name -cne "v$Version" -or $release.draft -or $release.prerelease) { throw 'The requested version is not the latest stable release.' }
 $assetName = "SourceSwitcher-v$Version-win-x64.zip"
@@ -74,7 +74,7 @@ $processes = Get-Process SourceSwitcher,WindowsSourceSwitcher.BrowserHost -Error
     Where-Object { $_.Path -in @($launcher, $helper) }
 foreach ($process in $processes) {
     if ($process.Path -ieq $launcher -and
-        [version](Get-Item -LiteralPath $launcher).VersionInfo.ProductVersion -ge [version]'1.5.1') {
+        [version](Get-Item -LiteralPath $launcher).VersionInfo.ProductVersion -ge [version]'1.4.0') {
         $shutdown = Start-Process -FilePath $launcher -ArgumentList '--shutdown' -WindowStyle Hidden -PassThru -Wait
         if ($shutdown.ExitCode -eq 0) { [void]$process.WaitForExit(15000) }
     }
