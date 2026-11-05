@@ -6,6 +6,7 @@ function render(state) {
   statusElement.textContent = state?.status ?? "Extension state unavailable.";
   stop.disabled = !state?.following;
   autoFollow.checked = state?.autoFollow === true;
+  if (state?.siteError) document.getElementById("site-status").textContent = state.siteError;
 }
 async function action(kind, fields = {}) {
   const current = ++revision;
@@ -30,16 +31,48 @@ async function refreshStatus() {
 follow.addEventListener("click", () => action("followActiveTab"));
 stop.addEventListener("click", () => action("stopFollowing"));
 autoFollow.addEventListener("change", () => action("setAutoFollow", { enabled: autoFollow.checked }));
-const kodik = document.getElementById("kodik");
-kodik?.addEventListener("click", async () => {
-  kodik.disabled = true;
+const siteButton = document.getElementById("site-access"), allSites = document.getElementById("all-sites");
+const siteStatus = document.getElementById("site-status");
+const webOrigins = ["http://*/*", "https://*/*"];
+let accessPending = false, siteOrigin;
+if (siteButton && chrome.tabs?.query) {
+  siteButton.disabled = true;
+  void chrome.tabs.query({ active: true, lastFocusedWindow: true }).then(([tab]) => {
+    const url = new URL(tab?.url);
+    if (["http:", "https:"].includes(url.protocol)) siteOrigin = url.protocol + "//" + url.hostname + "/*";
+    if (!accessPending) siteButton.disabled = !siteOrigin;
+  }).catch(() => {});
+}
+async function accessChanged(all) {
+  if (accessPending) return;
+  accessPending = true;
+  siteButton.disabled = allSites.disabled = true;
   try {
-    const origins = chrome.runtime.getManifest().optional_host_permissions;
-    const granted = await chrome.permissions.request({ permissions: ["webNavigation"], origins });
-    kodik.textContent = granted ? "Embedded Kodik enabled" : "Kodik access declined · retry";
-  } catch { kodik.textContent = "Could not enable Kodik · retry"; }
-  finally { kodik.disabled = false; }
-});
+    let granted;
+    if (all && !allSites.checked) {
+      await chrome.permissions.remove({ origins: webOrigins });
+      granted = false;
+    } else {
+      let origins = webOrigins;
+      if (!all) {
+        if (!siteOrigin) throw new Error("Open a website first.");
+        origins = [siteOrigin];
+      }
+      granted = await chrome.permissions.request({ permissions: ["webNavigation"], origins });
+    }
+    const state = await chrome.runtime.sendMessage({ kind: "syncSiteAccess" });
+    allSites.checked = await chrome.permissions.contains({ origins: webOrigins });
+    siteStatus.textContent = state?.siteError || (granted
+      ? "Early detection enabled. Reload the player once, then follow the tab."
+      : "Access removed or declined. Reload open players to remove earlier page hooks.");
+  } catch { siteStatus.textContent = "Could not change site access. Open a website and try again."; }
+  finally { accessPending = false; siteButton.disabled = !siteOrigin; allSites.disabled = false; }
+}
+siteButton?.addEventListener("click", () => accessChanged(false));
+allSites?.addEventListener("change", () => accessChanged(true));
+if (allSites && chrome.permissions?.contains) {
+  void chrome.permissions.contains({ origins: webOrigins }).then(value => { if (!accessPending) allSites.checked = value; }).catch(() => {});
+}
 document.getElementById("fixtures").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("fixture.html") }));
 action("getStatus");
 const statusTimer = setInterval(refreshStatus, 500);

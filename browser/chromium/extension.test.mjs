@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { test } from "node:test";
 
-const [protocolSource, backgroundSource, fixtureSource, manifestSource, headerSource] = await Promise.all(
-  ["protocol.js", "background.js", "fixture.js", "manifest.json", "media-header.js"].map(file => readFile(new URL(file, import.meta.url), "utf8")));
+const [protocolSource, backgroundSource, fixtureSource, manifestSource, headerSource, siteSource] = await Promise.all(
+  ["protocol.js", "background.js", "fixture.js", "manifest.json", "media-header.js", "site-access.js"].map(file => readFile(new URL(file, import.meta.url), "utf8")));
 const a = "a".repeat(32), b = "b".repeat(32), c = "c".repeat(32);
 const flush = async () => { for (let index = 0; index < 12; index++) await new Promise(resolve => setImmediate(resolve)); };
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
@@ -33,13 +33,14 @@ function background(frameOptions) {
     scripting: { executeScript: (...args) => probe(...args) }
   };
   if (frameOptions) {
-    chrome.permissions = { contains: async () => frameOptions.granted, onAdded: event(), onRemoved: event() };
+    chrome.permissions = { getAll: async () => ({ permissions: frameOptions.granted ? ["webNavigation"] : [],
+      origins: frameOptions.granted ? ["https://*.kodikplayer.com/*"] : [] }), onAdded: event(), onRemoved: event() };
     chrome.webNavigation = { getAllFrames: async ({ tabId }) => { assert.equal(tabId, 7); return frameOptions.frames; } };
   }
   const context = vm.createContext({ chrome, crypto: webcrypto, URL,
     setTimeout: (callback, ms) => { const id = ++nextTimer; timers.set(id, { callback, ms }); return id; },
     clearTimeout: id => timers.delete(id) });
-  context.importScripts = (...files) => { for (const file of files) vm.runInContext(file === "protocol.js" ? protocolSource : headerSource, context); };
+  context.importScripts = (...files) => { for (const file of files) vm.runInContext(file === "protocol.js" ? protocolSource : file === "site-access.js" ? siteSource : headerSource, context); };
   vm.runInContext(backgroundSource, context);
   return { ports, sent, lookups, updated, removed, activated, focused, connected, fixtureUrl,
     extension: (kind, fields = {}) => new Promise(resolve => { messages.emit({ kind, ...fields }, {}, resolve); }),
@@ -79,13 +80,33 @@ test("embedded Kodik probes only allowed followed-tab documents and holds on com
   assert.equal(denied.sent.at(-1).decoderRateHz, null);
 });
 
-test("manifest limits script access to user-granted active tabs, without debugger or host permissions", () => {
+test("manifest keeps website access optional, with no debugger or mandatory host permissions", () => {
   const manifest = JSON.parse(manifestSource);
   assert.equal(manifest.manifest_version, 3); assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs", "activeTab", "scripting"]);
   for (const name of ["host_permissions", "content_scripts", "externally_connectable", "web_accessible_resources"]) assert.equal(manifest[name], undefined);
   assert.equal(manifest.background.service_worker, "background.js");
+  assert.deepEqual(manifest.optional_host_permissions, ["http://*/*", "https://*/*"]);
   assert.equal(createHash("sha256").update(Buffer.from(manifest.key, "base64")).digest("hex").slice(0, 32)
     .replace(/./g, value => String.fromCharCode(97 + parseInt(value, 16))), "igialjjnjplkdmieelilccmcnkbbgchp");
+});
+
+test("unknown active media beside an embedded rate withholds the target", async () => {
+  const state = background({ granted: true, frames: [{ frameId: 1, url: "https://kodikplayer.com/media" }] });
+  let unknownActive = false;
+  state.setProbe(async ({ target }) => [{ result: target.frameIds ? { rate: 48000, streaming: true }
+    : unknownActive ? { playing: true } : { paused: true } }]);
+  await state.extension("followActiveTab"); await state.request();
+  assert.equal(state.sent.at(-1).decoderRateHz, 48000);
+  unknownActive = true; await state.request();
+  assert.equal(state.sent.at(-1).decoderRateHz, null); assert.equal(state.sent.at(-1).conflict, true);
+});
+
+test("an incomplete frame census cannot publish one inspected frame as unique media", async () => {
+  const frames = Array.from({ length: 17 }, (_, i) => ({ frameId: i + 1, url: "https://kodikplayer.com/media" }));
+  const state = background({ granted: true, frames });
+  state.setProbe(async () => [{ result: { rate: 48000 } }]);
+  await state.extension("followActiveTab"); await state.request();
+  assert.equal(state.sent.at(-1).decoderRateHz, null);
 });
 test("auto-follow changes tab identity and clearing the checkbox keeps the current link", async () => {
   const state = background();

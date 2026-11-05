@@ -6,10 +6,10 @@ async function readPlayingMediaHeader(playing = () => [...document.querySelector
   if (tracks.length === 0) return { paused: true };
   const [media] = tracks;
   let url;
-  try { url = new URL(media.currentSrc); } catch { return {}; }
+  try { url = new URL(media.currentSrc); } catch { return { playing: true }; }
   if (!["http:", "https:"].includes(url.protocol)
       || url.username || url.password || media.srcObject || media.mediaKeys
-      || (url.origin !== location.origin && !/\.(wav|flac|mp3|m4a|mp4|webm)$/i.test(url.pathname))) return {};
+      || (url.origin !== location.origin && !/\.(wav|flac|mp3|m4a|mp4|webm)$/i.test(url.pathname))) return { playing: true };
   const maximum = /\.(wav|flac|mp3)$/i.test(url.pathname) ? 4096 : 65536;
 
   let cache = globalThis.__sourceSwitcherMediaHeader;
@@ -29,7 +29,7 @@ async function readPlayingMediaHeader(playing = () => [...document.querySelector
   const format = await cache.format;
   const current = playing();
   return current.length === 1 && current[0] === media && media.currentSrc === url.href && !media.mediaKeys && !media.srcObject
-    ? format ?? {} : { paused: current.length === 0, conflict: current.length > 1 };
+    ? format ?? { playing: true } : { paused: current.length === 0, conflict: current.length > 1 };
 
   async function readHeader() {
     let reader;

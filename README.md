@@ -25,7 +25,7 @@ Use the self-contained release ZIP on a Windows x64 PC. The ZIP includes the .NE
 
 After an app update, click **Reload** on the extension's card at `chrome://extensions` and reopen the media tab. Register the helper again if you move the app. On a new website, open the extension once to grant temporary access. Unsupported players can use the Windows stream rate when available. [Extension details](browser/chromium/README.md)
 
-For a Kodik player embedded in Animelib, click **Enable embedded Kodik players**, approve the browser prompt, and follow the tab before starting the video. When a player has already started, reload the episode page and follow before pressing play.
+For earlier stream detection, click **Improve detection on this site**, approve the browser prompt, and reload the player once. **Early detection on all websites** also covers permitted embedded players, such as Kodik inside Animelib, without granting each player site separately. This captures supported streaming headers before Follow; it cannot expose every browser decoder or protected stream. Revoke permissions from the extension details page and reload open players.
 
 ## Choose a switching mode
 

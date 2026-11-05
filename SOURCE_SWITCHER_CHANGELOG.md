@@ -1,5 +1,11 @@
 # Source Switcher changelog
 
+## v1.5.0
+
+- Chrome/Helium extension 0.5 adds optional early detection for one site or all websites. Supported Media Source headers can be captured before Follow, including bounded split initialization.
+- Embedded-player inspection now follows granted sites and same-origin frames rather than a fixed Kodik host list. Ambiguous simultaneous players and the 16-frame limit withhold a target.
+- Early page observers retain bounded format metadata without a repeating timer. Default access remains temporary; website permissions are optional. Reload the extension and player tabs after updating.
+
 ## v1.4.10
 
 - Foreground Apple Music identification can start while playback status is still settling after a track change. Output switching still waits for playback readiness.

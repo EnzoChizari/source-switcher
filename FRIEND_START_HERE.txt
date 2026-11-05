@@ -63,4 +63,13 @@ Use SourceSwitcher:GitHub:EnzoChizari/source-switcher as the address,
 your GitHub username, and a repository-scoped Contents read token as the
 password. Keep the credential in Credential Manager on your PC.
 
+Optional Chrome / Helium support (version 119 or newer):
+In Settings > Browser integration, enable it and register the helper.
+At chrome://extensions, turn on Developer mode, Load unpacked, and choose
+browser/chromium in this app folder. Reload an existing extension after updating.
+In its popup, choose Improve detection on this site or Early detection on all
+websites, approve access, and reload the player once. Follow the tab, then make
+the browser master in Sources. Embedded players need access to their own host.
+See browser/chromium/README.md for supported formats and limitations.
+
 The corresponding source archive includes the build steps and GPL license.

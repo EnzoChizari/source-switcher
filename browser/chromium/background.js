@@ -1,17 +1,18 @@
 /* global DX5ChromiumProtocol */
 "use strict";
-importScripts("protocol.js");
+importScripts("protocol.js", "site-access.js");
 (() => {
   const protocol = DX5ChromiumProtocol;
   const browserInstanceNonce = protocol.nonce();
   const demos = new Map();
   const linkedStatus = "Tab linked. No supported media header is available; Windows stream detection can still be used.";
   let autoFollow = false;
-  let kodikAllowed;
+  const sites = DX5SiteAccess;
+  void sites.sync();
   let selection = null, selectionGeneration = 0, followGeneration = 0, port = null, portGeneration = 0, sequence = 0;
   let clearReason = "unfollowed", stopAcknowledgement = false, stopTimer = null, status = "Not following a tab.";
   const publicStatus = () => ({ following: selection !== null, tabId: selection?.tabId ?? null,
-    connected: port !== null, autoFollow, decoderSupported: false, status });
+    connected: port !== null, autoFollow, decoderSupported: false, status, siteError: sites.error() });
 
   function sanitizeError(error) {
     if (!error) return "";
@@ -103,33 +104,18 @@ importScripts("protocol.js");
     const tab = await chrome.tabs.get(tabId);
     const demo = demos.get(tabId);
     if (tab?.url === chrome.runtime.getURL("fixture.html")) return [tab, demo?.observation];
-    const [main, frames] = await Promise.all([probeDocument({ tabId }),
-      kodikFrames(tabId).then(targets => Promise.all(targets.map(probeDocument)))]);
+    const [main, frameSet] = await Promise.all([probeDocument({ tabId }), sites.frames(tab)]);
+    if (frameSet.truncated) return [tab, { conflict: true }];
+    const frames = await Promise.all(frameSet.targets.map(probeDocument));
     if (frames.length === 0) return [tab, main];
     const observations = [main, ...frames];
     const formats = observations.filter(media => media?.rate);
-    if (formats.length > 1 || observations.some(media => media?.conflict)) return [tab, { conflict: true }];
+    if (formats.length > 1 || observations.some(media => media?.conflict)
+      || formats.length && observations.some(media => media?.playing && !media.rate)) return [tab, { conflict: true }];
     return [tab, formats[0] ?? (observations.every(media => media?.paused) ? { paused: true } : undefined)];
   }
-  async function kodikFrames(tabId) {
-    if (!chrome.webNavigation?.getAllFrames || !chrome.permissions) return [];
-    try {
-      const origins = chrome.runtime.getManifest().optional_host_permissions;
-      kodikAllowed ??= await chrome.permissions.contains({ permissions: ["webNavigation"], origins });
-      if (!kodikAllowed) return [];
-      const domains = origins.map(origin => origin.slice("https://*.".length, -"/*".length));
-      return (await chrome.webNavigation.getAllFrames({ tabId }) ?? []).filter(frame => {
-        if (frame.frameId <= 0 || frame.errorOccurred || (frame.documentLifecycle && frame.documentLifecycle !== "active")) return false;
-        try {
-          const url = new URL(frame.url);
-          return url.protocol === "https:" && domains.some(domain => url.hostname === domain || url.hostname.endsWith("." + domain));
-        } catch { return false; }
-      }).slice(0, 4).map(frame => ({ tabId, ...(frame.documentId
-        ? { documentIds: [frame.documentId] } : { frameIds: [frame.frameId] }) }));
-    } catch { return []; }
-  }
-  chrome.permissions?.onAdded?.addListener(() => { kodikAllowed = undefined; });
-  chrome.permissions?.onRemoved?.addListener(() => { kodikAllowed = undefined; });
+  chrome.permissions?.onAdded?.addListener(() => { void sites.sync(); });
+  chrome.permissions?.onRemoved?.addListener(() => { void sites.sync(); });
   async function probeDocument(target) {
     const probe = async injection => {
       try { return (await chrome.scripting.executeScript({ target, ...injection }))[0]?.result; }
@@ -147,8 +133,9 @@ importScripts("protocol.js");
     };
     const [file, mse] = await Promise.all([direct(), stream()]);
     // Only the isolated file reader can supply bit depth. The page-world hook is for rates.
-    const pageObservation = mse?.rate ? { rate: mse.rate, streaming: mse.streaming } : mse;
-    return mse?.conflict ? mse : file?.rate || file?.conflict ? file : pageObservation ?? file;
+    const pageObservation = mse?.rate ? { rate: mse.rate, streaming: mse.streaming, playing: true } : mse;
+    return mse?.conflict ? mse : file?.rate || file?.conflict ? file
+      : mse?.rate || mse?.playing ? pageObservation : file ?? pageObservation;
   }
   chrome.runtime.onConnect.addListener(connection => {
     const tabId = connection.sender?.tab?.id;
@@ -168,6 +155,7 @@ importScripts("protocol.js");
     });
   });
   async function command(message) {
+    if (message?.kind === "syncSiteAccess") { await sites.sync(); return publicStatus(); }
     if (message?.kind === "getStatus") return publicStatus();
     if (message?.kind === "stopFollowing") { autoFollow = false; clearSelection("unfollowed"); return publicStatus(); }
     if (message?.kind === "setAutoFollow") {

@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { test } from "node:test";
 const protocol = await readFile(new URL("protocol.js", import.meta.url), "utf8");
 const source = await readFile(new URL("background.js", import.meta.url), "utf8");
+const site = await readFile(new URL("site-access.js", import.meta.url), "utf8");
 function setup(error, throws = false) {
   let listener, disconnected, attempts = 0;
   const chrome = { runtime: { lastError: error,
@@ -17,7 +18,7 @@ function setup(error, throws = false) {
       onRemoved: { addListener() {} }, onActivated: { addListener() {} } },
     windows: { onFocusChanged: { addListener() {} } } };
   const context = vm.createContext({ chrome, crypto: webcrypto, setTimeout: () => 1, clearTimeout() {} });
-  context.importScripts = () => vm.runInContext(protocol, context);
+  context.importScripts = (...files) => { for (const file of files) vm.runInContext(file === "protocol.js" ? protocol : site, context); };
   vm.runInContext(source, context);
   return { invoke: kind => new Promise(resolve => listener({ kind }, {}, resolve)),
     disconnect: () => disconnected(), attempts: () => attempts };

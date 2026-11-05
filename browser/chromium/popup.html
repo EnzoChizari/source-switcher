@@ -2,7 +2,9 @@
 <body><h1>Source Switcher Tab Link</h1><p>Link a tab to Source Switcher.</p>
 <div class="actions"><button id="follow">Follow this tab</button><button id="stop">Stop following</button></div>
 <p><label><input id="auto-follow" type="checkbox"> Automatically follow the active tab</label></p>
-<p><button id="kodik">Enable embedded Kodik players</button></p>
+<p><button id="site-access">Improve detection on this site</button></p>
+<p><label><input id="all-sites" type="checkbox"> Early detection on all websites</label></p>
+<p id="site-status" class="detail" role="status">Site access is optional. Reload the player after enabling it.</p>
 <p id="status" role="status">Reading connection state…</p>
-<p class="detail">Reads supported file and stream headers. Follow before starting playback when possible. Other media uses Windows application-stream detection when available.</p>
+<p class="detail">Reads supported file and stream headers. Embedded players need access to their own site too. Protected or unsupported audio uses Windows stream detection when available.</p>
 <button id="fixtures">Open PCM playback demo</button><script src="popup.js"></script></body></html>
