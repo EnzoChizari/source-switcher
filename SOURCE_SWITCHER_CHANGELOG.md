@@ -1,5 +1,10 @@
 # Source Switcher changelog
 
+## v1.4.5
+
+- Apple Music can retry a guarded format recovery when the session remains silent after the first check.
+- A confirmed silent Apple Music session can recover faster from legacy 16-bit at the same rate. Automatic handoffs to another app prefer extensible 16-bit while Apple Music still has a session on that output.
+
 ## v1.4.4
 
 - Apple Music prefers the driver's extensible PCM format for 16-bit output. This preserves the actual 16-bit depth when the legacy format makes Apple Music silent.

@@ -22,7 +22,7 @@ internal sealed class AppleMusicSwitchGuard(
 {
     internal static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(60);
     internal static readonly TimeSpan StartupTimeout = TimeSpan.FromMilliseconds(1500);
-    internal static readonly TimeSpan SilentDescriptorRepairDelay = TimeSpan.FromMilliseconds(300);
+    internal static readonly TimeSpan SilentRecoveryConfirmation = TimeSpan.FromMilliseconds(300);
     internal static readonly TimeSpan HealthyConfirmation = TimeSpan.FromMilliseconds(120);
     internal static readonly TimeSpan TimelineConfirmation = TimeSpan.FromMilliseconds(150);
     internal static readonly TimeSpan RebuildTimeout = TimeSpan.FromSeconds(6);
@@ -31,7 +31,7 @@ internal sealed class AppleMusicSwitchGuard(
     public async Task<AppleSwitchResult> RunAsync(IAppleSwitchSession? session, Func<bool> contextCurrent,
         Func<bool?> renderActive, Func<float?> signalPeak, Func<ApplyResult?> apply, CancellationToken cancellationToken,
         Action? formatConfirmed = null, bool allowSilentDepthIncrease = false, Func<ApplyResult?>? restorePrevious = null,
-        Func<ApplyResult?>? recoverSilent = null, bool repairSameDepth = false)
+        Func<ApplyResult?>? recoverSilent = null, bool allowFastSilentRecovery = false)
     {
         if (session is null) return new(null, "Apple Music session unavailable; output held.", false, true);
         var watch = Stopwatch.StartNew();
@@ -46,8 +46,10 @@ internal sealed class AppleMusicSwitchGuard(
                 return new(null, "Apple Music is paused or its track is unconfirmed; output held until playback.", false, true);
             var since = Now();
             TimeSpan? healthySince = null;
-            var silentThroughout = true;
+            TimeSpan? silentStart = null;
+            TimeSpan? silentPosition = null;
             var recoveringSilence = false;
+            var canRecoverSilent = allowSilentDepthIncrease || recoverSilent is not null;
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -56,23 +58,28 @@ internal sealed class AppleMusicSwitchGuard(
                     return new(null, "Apple Music track/session, playback or master changed; output held.", false, true);
                 var peak = signalPeak();
                 var active = renderActive();
-                silentThroughout &= active == true && peak == 0;
+                if (IsConfirmedSilence(active, peak))
+                {
+                    silentStart ??= Now();
+                    silentPosition ??= state.Position;
+                }
+                else
+                {
+                    silentStart = null;
+                    silentPosition = null;
+                }
                 if (HasLiveSignal(active, peak)) healthySince ??= Now();
                 else healthySince = null;
                 if (healthySince is { } healthy && Now() - healthy >= HealthyConfirmation) break;
-                if (repairSameDepth && recoverSilent is not null && silentThroughout
-                    && Now() - since >= SilentDescriptorRepairDelay && TimelineAdvanced(original.Position, state.Position))
+                var timedOut = Now() - since >= StartupTimeout;
+                if (canRecoverSilent && (allowFastSilentRecovery || timedOut)
+                    && silentStart is { } start && Now() - start >= SilentRecoveryConfirmation
+                    && TimelineAdvanced(silentPosition, state.Position))
                 {
                     recoveringSilence = true;
                     break;
                 }
-                if (Now() - since >= StartupTimeout)
-                {
-                    if ((!allowSilentDepthIncrease && recoverSilent is null) || !silentThroughout || !TimelineAdvanced(original.Position, state.Position))
-                        return new(null, WaitingForSignalStatus, false, true, WaitingForSignal: true);
-                    recoveringSilence = true;
-                    break;
-                }
+                if (timedOut) return new(null, WaitingForSignalStatus, false, true, WaitingForSignal: true);
                 await Wait(cancellationToken).ConfigureAwait(false);
             }
             cancellationToken.ThrowIfCancellationRequested();
@@ -145,6 +152,12 @@ internal sealed class AppleMusicSwitchGuard(
 
     internal static bool HasLiveSignal(bool? active, float? peak) =>
         active == true && peak is > 0.001f && float.IsFinite(peak.Value);
+
+    internal static bool ShouldRecheckSignal(AppleRenderObservation observation, bool canRecoverSilent) =>
+        HasLiveSignal(observation.Active, observation.Peak)
+        || canRecoverSilent && IsConfirmedSilence(observation.Active, observation.Peak);
+
+    private static bool IsConfirmedSilence(bool? active, float? peak) => active == true && peak == 0;
 
     private static bool TimelineAdvanced(TimeSpan? start, TimeSpan? current) =>
         start is { } from && current is { } to && to - from >= TimelineConfirmation;

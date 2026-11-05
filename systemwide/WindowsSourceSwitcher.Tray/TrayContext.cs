@@ -1119,7 +1119,11 @@ internal sealed class TrayContext : ApplicationContext
                 && snapshot.Formats.Any(format => format.SampleRateHz == desired && format.BitDepth == 24
                     && format.Channels == currentFormat.Channels);
             var sourceBits = useCompatible24 ? 24 : trackBits;
-            var preferAppleExtensible16 = appleSource is not null && (sourceBits ?? currentFormat.BitsPerSample) == 16
+            var appleHandoffToAnotherApp = appleSource is null && appleOnOutput is not null
+                && _automaticSelectionRevision == selectedRevision && decision.Reason != RateDecisionReason.ManualOverride
+                && !decision.ManualBitDepth;
+            var preferAppleExtensible16 = (appleSource is not null || appleHandoffToAnotherApp)
+                && (sourceBits ?? currentFormat.BitsPerSample) == 16
                 && _endpoint.SupportsExtensible16BitFormat(endpointId, new(desired, 16, currentFormat.Channels));
             var repairApple16 = guardAppleWrite && preferAppleExtensible16 && snapshot.UsesLegacy16Bit;
             var recoveryProbeKey = guardAppleWrite && currentFormat.BitsPerSample == 16 && !decision.ManualBitDepth
@@ -1199,6 +1203,9 @@ internal sealed class TrayContext : ApplicationContext
             }
             if (_failedKey == key) { _status = _appleSwitchFailureKey == key ? _appleSwitchDetail : "Switch failed. Check exclusive playback / device availability, then Refresh / retry. See switcher.log for details."; return; }
             var allowSilentDepthIncrease = guardAppleWrite && target.BitsPerSample > snapshot.Current.BitDepth;
+            var canRecoverSilent = allowSilentDepthIncrease || repairApple16 || coldFallback is not null;
+            var allowFastSilentRecovery = repairApple16 || allowSilentDepthIncrease && snapshot.UsesLegacy16Bit
+                && snapshot.Current.SampleRateHz == desired;
             var appleSignalKey = !guardAppleWrite ? null : $"{key}|{appleSource!.SessionToken}|{appleTrack?.Generation}";
             var waitingForAppleSignal = appleSignalKey is not null && _appleWaitingForSignalKey == appleSignalKey;
             if (waitingForAppleSignal && System.Diagnostics.Stopwatch.GetElapsedTime(_appleSignalWaitStarted) < TimeSpan.FromSeconds(1))
@@ -1263,7 +1270,11 @@ internal sealed class TrayContext : ApplicationContext
                         return new(false, false, "Output format changed before the 16-bit write.");
                     var selected = new AudioFormatCandidate(desired, 16, target.Channels);
                     if (!_endpoint.TryApplyExtensible16BitFormat(endpointId, selected, out var written, out var failure))
+                    {
+                        if (appleHandoffToAnotherApp && !written && adapter.ReadDeviceFormat(endpointId) == currentFormat)
+                            return EndpointRateApplier.Apply(adapter, endpointId, desired, sourceBits, requireExactDepth, preventDepthReduction);
                         return new(false, written, failure);
+                    }
                     var confirmed = adapter.ReadDeviceFormat(endpointId) == target
                         && adapter.ReadMixFormat(endpointId)?.SampleRateHz == desired;
                     return confirmed
@@ -1303,7 +1314,7 @@ internal sealed class TrayContext : ApplicationContext
                 if (waitingForAppleSignal)
                 {
                     var signal = liveReader.Read(endpointId, selectedKey!);
-                    if (!AppleMusicSwitchGuard.HasLiveSignal(signal.Active, signal.Peak))
+                    if (!AppleMusicSwitchGuard.ShouldRecheckSignal(signal, canRecoverSilent))
                     {
                         appleSwitch = new(null, AppleMusicSwitchGuard.WaitingForSignalStatus, false, true, WaitingForSignal: true);
                         return null;
@@ -1379,7 +1390,7 @@ internal sealed class TrayContext : ApplicationContext
                             }
                             catch (InvalidOperationException) { /* Closing or recreating the owned window. */ }
                         }, allowSilentDepthIncrease, automaticAppleReduction ? RestoreApple : null,
-                        repairApple16 ? ApplyApple : coldFallback is null ? null : RecoverApple, repairApple16).ConfigureAwait(false);
+                        repairApple16 ? ApplyApple : coldFallback is null ? null : RecoverApple, allowFastSilentRecovery).ConfigureAwait(false);
                 return appleSwitch.Applied;
             });
             if (appleSwitch is not null)

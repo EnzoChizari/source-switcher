@@ -144,8 +144,8 @@ public sealed class AppleMusicSwitchGuardTests
         TimeSpan? repairedAt = null;
         var result = await clock.Guard.RunAsync(new Session(), () => true, () => true,
             () => repairedAt.HasValue ? .1f : 0f, MustNotWrite, default,
-            recoverSilent: () => { repairedAt = clock.Elapsed; return Applied; }, repairSameDepth: true);
-        Assert.Equal(AppleMusicSwitchGuard.SilentDescriptorRepairDelay, repairedAt);
+            recoverSilent: () => { repairedAt = clock.Elapsed; return Applied; }, allowFastSilentRecovery: true);
+        Assert.Equal(AppleMusicSwitchGuard.SilentRecoveryConfirmation, repairedAt);
         Assert.True(result.PlaybackObserved);
     }
 
@@ -153,9 +153,32 @@ public sealed class AppleMusicSwitchGuardTests
     public async Task DescriptorRepairNeedsAnAdvancingTrack()
     {
         var result = await new Clock().Guard.RunAsync(new Session { Advance = false }, () => true, () => true,
-            () => 0f, MustNotWrite, default, recoverSilent: MustNotWrite, repairSameDepth: true);
+            () => 0f, MustNotWrite, default, recoverSilent: MustNotWrite, allowFastSilentRecovery: true);
         Assert.True(result.WaitingForSignal);
     }
+
+    [Fact]
+    public async Task SameRateDepthRecoveryCanConfirmSilenceAfterMeterBecomesAvailable()
+    {
+        var clock = new Clock();
+        TimeSpan? appliedAt = null;
+        var meterAvailableAt = TimeSpan.FromMilliseconds(120);
+        var result = await clock.Guard.RunAsync(new Session(), () => true, () => true,
+            () => appliedAt.HasValue ? .1f : clock.Elapsed < meterAvailableAt ? null : 0f,
+            () => { appliedAt = clock.Elapsed; return Applied; }, default,
+            allowSilentDepthIncrease: true, allowFastSilentRecovery: true);
+        Assert.Equal(meterAvailableAt + AppleMusicSwitchGuard.SilentRecoveryConfirmation, appliedAt);
+        Assert.True(result.PlaybackObserved);
+    }
+
+    [Theory]
+    [InlineData(true, 0f, true, true)]
+    [InlineData(true, 0f, false, false)]
+    [InlineData(true, .1f, false, true)]
+    [InlineData(true, null, true, false)]
+    [InlineData(false, 0f, true, false)]
+    public void WaitingCanRecheckConfirmedSilenceOnlyForAnEligibleRecovery(bool active, float? peak, bool canRecover, bool expected) =>
+        Assert.Equal(expected, AppleMusicSwitchGuard.ShouldRecheckSignal(new(active, peak), canRecover));
 
     [Fact]
     public async Task FailedDepthReductionRestoresOnceWhileTheOriginalTrackStillPlays()
