@@ -58,7 +58,8 @@ internal static class SourceListPresentation
     {
         var manual = settings.ManualSampleRatesHz.FirstOrDefault(item => KeysEqual(item.Key, entry.Identity));
         if (manual.Key is not null && SampleRates.IsValid(manual.Value))
-            return new(SourceRatePresentation.FormatRate(manual.Value) + " manual",
+            return new(SourceRatePresentation.FormatRate(manual.Value, settings.FollowSourceBitDepth
+                    ? settings.ManualBitDepths.GetValueOrDefault(entry.Identity) : null) + " manual",
                 "Saved manual target for this app; no current audio session or native/content rate was observed.");
 
         if (entry.IsMaster)

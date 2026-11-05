@@ -26,6 +26,8 @@ public sealed class BrowserSourceRatePresentationTests
         var display = SourceRatePresentation.Describe(Source(), Settings(), Decoder(), Stream(), snapshot);
         Assert.Equal("96 kHz file header", display.Text);
         Assert.Contains("Windows output", display.Detail);
+        Assert.Equal("24-bit / 96 kHz file header",
+            SourceRatePresentation.Describe(Source(), Settings(), Decoder() with { BitsPerSample = 24 }, Stream(), snapshot).Text);
     }
 
     [Fact]

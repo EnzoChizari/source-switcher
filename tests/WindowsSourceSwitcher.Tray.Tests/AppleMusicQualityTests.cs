@@ -95,13 +95,13 @@ public sealed class AppleMusicQualityTests
         Assert.Equal(RateDecisionReason.PlayerMetadata, decision.Reason);
         Assert.Equal(44100, decision.DesiredSampleRateHz);
         Assert.Equal(24, decision.DesiredBitsPerSample);
-        Assert.Equal("44.1 kHz / 24-bit track", SourceRatePresentation.Describe(apple, settings, report, stream).Text);
+        Assert.Equal("24-bit / 44.1 kHz track", SourceRatePresentation.Describe(apple, settings, report, stream).Text);
         Assert.Equal(new EndpointFormat(44100, 24, 2), EndpointFormatPolicy.SelectExact(new(48000, 16, 2),
             [new(44100, 16, 2), new(44100, 24, 2)], Assert.IsType<int>(decision.DesiredSampleRateHz), decision.DesiredBitsPerSample,
             preventDepthReduction: true));
         Assert.Equal(RateDecisionReason.CatalogMetadata,
             SampleRatePolicy.Evaluate(settings, [apple.ToSnapshot()], [stream, catalog, report with { SessionToken = "old" }]).Reason);
-        Assert.Equal("192 kHz / 16-bit est.",
+        Assert.Equal("16-bit / 192 kHz est.",
             SourceRatePresentation.Describe(apple, settings, catalog with { BitsPerSample = 16 }).Text);
         var rateOnly = SampleRatePolicy.Evaluate(settings, [apple.ToSnapshot()], [stream, catalog, report with { BitsPerSample = null }]);
         Assert.Equal(44100, rateOnly.DesiredSampleRateHz);

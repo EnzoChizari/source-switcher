@@ -293,15 +293,40 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
         string deviceId,
         AudioFormatCandidate format,
         out AudioFormatCandidate? verifiedDeviceFormat,
-        out string failureReason)
+        out string failureReason) =>
+        TryApplyFormat(deviceId, format, requireExtensible16Bit: false, out verifiedDeviceFormat, out _, out failureReason);
+
+    public bool UsesLegacy16BitFormat(string deviceId) =>
+        TryReadCurrentPropertyStoreDescriptor(deviceId) is { Kind: EndpointFormatKind.WaveFormatEx, Format.BitDepth: 16 };
+
+    public bool SupportsExtensible16BitFormat(string deviceId, AudioFormatCandidate format)
+    {
+        lock (_supportedFormatsSync)
+            return _supportedFormatsCache.TryGetValue(deviceId, out var descriptors)
+                && EndpointFormatSupport.SelectExtensible16Bit(descriptors, format) is not null;
+    }
+
+    public bool TryApplyExtensible16BitFormat(string deviceId, AudioFormatCandidate format, out bool writeAccepted, out string failureReason) =>
+        TryApplyFormat(deviceId, format, requireExtensible16Bit: true, out _, out writeAccepted, out failureReason);
+
+    private bool TryApplyFormat(
+        string deviceId, AudioFormatCandidate format, bool requireExtensible16Bit,
+        out AudioFormatCandidate? verifiedDeviceFormat, out bool writeAccepted, out string failureReason)
     {
         verifiedDeviceFormat = null;
+        writeAccepted = false;
         var descriptor = default(EndpointFormatDescriptor);
         var beforeFormat = default(AudioFormatCandidate);
 
         try
         {
-            descriptor = GetDescriptor(deviceId, format, out var descriptorSelectionDiagnostics);
+            string descriptorSelectionDiagnostics;
+            if (requireExtensible16Bit)
+            {
+                descriptor = EndpointFormatSupport.SelectExtensible16Bit(GetCachedOrProbedDescriptors(deviceId), format);
+                descriptorSelectionDiagnostics = "required a probed 16-bit WAVEFORMATEXTENSIBLE descriptor";
+            }
+            else descriptor = GetDescriptor(deviceId, format, out descriptorSelectionDiagnostics);
             if (descriptor is null)
             {
                 CacheApplyDiagnostics(deviceId, $"Unsupported target {format.DisplayName}: not proven settable by exclusive-mode probing.");
@@ -311,6 +336,7 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
 
             beforeFormat = GetCurrentDeviceFormat(deviceId);
             PolicyConfigInterop.SetDeviceFormat(deviceId, descriptor.NativeFormat);
+            writeAccepted = true;
             // Verify against the descriptor's own candidate: the legacy container-bits fallback
             // can select a descriptor whose valid-bits depth differs from the requested format,
             // and the device reports the descriptor's depth afterwards.
@@ -318,7 +344,7 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
                 descriptor.Format,
                 VerificationAttempts,
                 VerificationRetryDelay,
-                () => ReadCurrentDeviceFormatSnapshot(deviceId),
+                () => ReadCurrentDeviceFormatSnapshot(deviceId, requireExtensible16Bit),
                 Thread.Sleep);
 
             verifiedDeviceFormat = verification.VerifiedFormat;
@@ -336,7 +362,6 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
                     diagnostics;
                 return false;
             }
-
             CacheLastSuccessfulKind(deviceId, descriptor.Kind);
             failureReason = string.Empty;
             return true;
@@ -501,14 +526,17 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
         }
     }
 
-    private DeviceFormatSnapshot ReadCurrentDeviceFormatSnapshot(string deviceId)
+    private DeviceFormatSnapshot ReadCurrentDeviceFormatSnapshot(string deviceId, bool requireExtensible16Bit = false)
     {
         AudioFormatCandidate? propertyStoreFormat = null;
         AudioFormatCandidate? policyConfigFormat = null;
 
         try
         {
-            propertyStoreFormat = TryReadCurrentPropertyStoreDescriptor(deviceId)?.Format;
+            var property = TryReadCurrentPropertyStoreDescriptor(deviceId);
+            if (requireExtensible16Bit && property is not { Kind: EndpointFormatKind.WaveFormatExtensible, Format.BitDepth: 16 })
+                return new(null, null);
+            propertyStoreFormat = property?.Format;
         }
         catch
         {

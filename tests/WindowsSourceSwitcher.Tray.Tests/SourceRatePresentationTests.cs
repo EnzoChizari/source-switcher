@@ -57,6 +57,16 @@ public sealed class SourceRatePresentationTests
         Assert.Equal(observation.Detail, display.Evidence);
     }
 
+    [Fact]
+    public void KnownStreamDepthPrecedesRateWithoutChangingItsEvidence()
+    {
+        var source = GenericSource();
+        var stream = StreamObservation(source) with { BitsPerSample = 32, UsesFloatPcm = true };
+        var display = SourceRatePresentation.Describe(source, StreamSettings(source), stream);
+        Assert.Equal("32-bit / 48 kHz stream", display.Text);
+        Assert.Contains("floating-point PCM", display.Detail);
+    }
+
     [Theory]
     [InlineData("different-source")]
     [InlineData("different-session")]

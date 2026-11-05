@@ -502,11 +502,13 @@ internal sealed class SourcePopup : Form
                 + settings.SelectedSourceKey + ":" + settings.SelectionRevision + ":" + settings.CatalogRateDetectionEnabled
                 + ":" + settings.StreamRateDetectionEnabled + ":" + observation + ":" + appleTrackObservation
                 + ":" + settings.BrowserRateDetectionEnabled + ":" + browser?.Version
+                + ":" + settings.FollowSourceBitDepth
                 + ":" + settings.SelectedSourceDisplayName
                 + ":" + settings.LastKnownSourceKey + ":" + settings.LastKnownSampleRateHz
                 + string.Join(";", sourceRows.Select(row => $"{row.Identity}:{row.Name}:{row.IsFavorite}:{row.IsPinned}:{row.IsMaster}:{row.MediaPlayback}"))
                 + string.Join(";", (streamObservations ?? new Dictionary<string, RateObservation>()).OrderBy(x => x.Key).Select(x => $"{x.Key}:{x.Value}"))
-                + string.Join(";", settings.ManualSampleRatesHz.OrderBy(x => x.Key).Select(x => $"{x.Key}:{x.Value}"));
+                + string.Join(";", settings.ManualSampleRatesHz.OrderBy(x => x.Key).Select(x => $"{x.Key}:{x.Value}"))
+                + string.Join(";", settings.ManualBitDepths.OrderBy(x => x.Key).Select(x => $"{x.Key}:{x.Value}"));
             if (_rowsSignature != rowsSignature)
             {
                 _rowsSignature = rowsSignature;

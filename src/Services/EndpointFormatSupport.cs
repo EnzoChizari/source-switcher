@@ -360,6 +360,14 @@ internal static class EndpointFormatSupport
             .ThenBy(GetPreference)
             .FirstOrDefault();
 
+    internal static EndpointFormatDescriptor? SelectExtensible16Bit(
+        IReadOnlyList<EndpointFormatDescriptor> descriptors, AudioFormatCandidate target) =>
+        target.BitDepth == 16
+            ? descriptors.FirstOrDefault(descriptor => descriptor.Format == target
+                && descriptor.Kind == EndpointFormatKind.WaveFormatExtensible
+                && descriptor.Origin == EndpointFormatOrigin.ExclusiveProbe)
+            : null;
+
     private static WaveFormat? TryMarshalWaveFormat(byte[] blob)
     {
         var pointer = Marshal.AllocHGlobal(blob.Length);

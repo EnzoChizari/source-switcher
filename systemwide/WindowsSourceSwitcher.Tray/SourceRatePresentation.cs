@@ -15,23 +15,22 @@ internal static class SourceRatePresentation
     {
         var manual = settings.ManualSampleRatesHz.FirstOrDefault(item => KeysEqual(item.Key, source.Identity));
         if (manual.Key is not null && SampleRates.IsValid(manual.Value))
-            return new(FormatRate(manual.Value) + " manual",
+            return new(FormatRate(manual.Value, settings.FollowSourceBitDepth
+                    ? settings.ManualBitDepths.GetValueOrDefault(source.Identity) : null) + " manual",
                 "Saved manual target for this app; this is not a detected native/content rate.");
 
         if (source.SupportsAutomaticRate && settings.CatalogRateDetectionEnabled)
         {
             if (observation?.Provenance == RateProvenance.PlayerMetadata
                 && IsCurrentObservation(source, settings, observation, requireActive: false))
-                return new(FormatRate(observation.SampleRateHz!.Value)
-                    + (observation.BitsPerSample is { } reportedDepth ? $" / {reportedDepth}-bit track" : " track"),
+                return new(FormatRate(observation.SampleRateHz!.Value, observation.BitsPerSample) + " track",
                     observation.Detail + " Windows output is shown separately.", observation.Detail);
             // Track metadata is meaningful while paused as well. The monitor validates its
             // track/session identity separately; the write policy still requires playback.
             if (IsCurrentCatalogEstimate(source, settings, observation))
-                return new(FormatRate(observation!.SampleRateHz!.Value)
-                    + (settings.FollowSourceBitDepth && observation.BitsPerSample is { } estimatedBits ? $" / {estimatedBits}-bit est." : " est."),
+                return new(FormatRate(observation!.SampleRateHz!.Value, observation.BitsPerSample) + " est.",
                     "Apple Music track estimate, independent of the master and mixer; delivered asset remains unverified."
-                    + (settings.FollowSourceBitDepth && observation.BitsPerSample is { } depth ? $" Estimated depth is {depth}-bit." : "")
+                    + (observation.BitsPerSample is { } depth ? $" Estimated depth is {depth}-bit." : "")
                     + (!source.IsActive || playback == FavoritePlaybackState.NotPlaying ? " Output held during pause." : ""), observation.Detail);
             var heldDetail = KeysEqual(source.Identity, settings.LastKnownSourceKey)
                 && settings.LastKnownSampleRateHz is { } appleHeld && SampleRates.IsValid(appleHeld)
@@ -54,20 +53,20 @@ internal static class SourceRatePresentation
 
         if (settings.FollowSourceBitDepth && observation?.Provenance == RateProvenance.PlayerMetadata
             && IsCurrentObservation(source, settings, observation))
-            return new(FormatRate(observation.SampleRateHz!.Value) + " track",
+            return new(FormatRate(observation.SampleRateHz!.Value, observation.BitsPerSample) + " track",
                 observation.Detail + (observation.BitsPerSample is { } trackBits ? $" Reported depth: {trackBits}-bit." : " Depth is unknown."),
                 observation.Detail);
 
         if (settings.BrowserRateDetectionEnabled && observation?.Provenance == RateProvenance.BrowserDecoder
             && IsCurrentObservation(source, settings, observation))
             return browser?.EvidenceField == BrowserWireProtocol.ChromiumStreamEvidenceField
-                ? new(FormatRate(observation.SampleRateHz!.Value) + " stream header",
+                ? new(FormatRate(observation.SampleRateHz!.Value, observation.BitsPerSample) + " stream header",
                     "Sample rate declared by the linked player's stream initialization data. Browser processing and Windows output are separate.", observation.Detail)
                 : browser?.EvidenceField == BrowserWireProtocol.ChromiumHeaderEvidenceField
-                ? new(FormatRate(observation.SampleRateHz!.Value) + " file header",
+                ? new(FormatRate(observation.SampleRateHz!.Value, observation.BitsPerSample) + " file header",
                     (observation.BitsPerSample is { } fileBits ? $"File header reports {fileBits}-bit PCM. " : "")
                     + "Sample rate read from the linked tab's media file. Browser processing and Windows output are separate.", observation.Detail)
-                : new(FormatRate(observation.SampleRateHz!.Value) + " tab decoder",
+                : new(FormatRate(observation.SampleRateHz!.Value, observation.BitsPerSample) + " tab decoder",
                     "Decoder metadata from the explicitly chosen browser tab. Tab-to-WASAPI routing and later browser processing are unverified.", observation.Detail);
 
         if (browser is not null && BrowserSourcePolicy.Matches(settings, browser) && browser.DecoderSupported
@@ -78,13 +77,14 @@ internal static class SourceRatePresentation
         var stream = IsCurrentStream(source, settings, streamObservation) ? streamObservation
             : IsCurrentStream(source, settings, observation) ? observation : null;
         if (stream is not null)
-            return new(FormatRate(stream.SampleRateHz!.Value) + " stream",
-                settings.FollowSourceBitDepth && string.Equals(Path.GetFileName(source.ExecutablePath), "spotify.exe", StringComparison.OrdinalIgnoreCase)
+            return new(FormatRate(stream.SampleRateHz!.Value, stream.BitsPerSample) + " stream",
+                (settings.FollowSourceBitDepth && string.Equals(Path.GetFileName(source.ExecutablePath), "spotify.exe", StringComparison.OrdinalIgnoreCase)
                     ? "Open Spotify's Lossless badge → File quality to follow its reported depth. The Windows stream only supplies the rate."
-                    : "Actual PCM rate submitted to WASAPI; original media rate remains unverified.", stream.Detail);
+                    : "Actual PCM rate submitted to WASAPI; original media rate remains unverified.")
+                + (stream.UsesFloatPcm ? " The submitted stream uses floating-point PCM." : ""), stream.Detail);
 
         if (IsCurrentCatalogEstimate(source, settings, observation))
-            return new(FormatRate(observation!.SampleRateHz!.Value) + " est.",
+            return new(FormatRate(observation!.SampleRateHz!.Value, observation.BitsPerSample) + " est.",
                 "Catalog estimate of an available asset; actual stream rate is unverified.", observation.Detail);
 
         if (settings.StreamRateDetectionEnabled)
@@ -119,6 +119,9 @@ internal static class SourceRatePresentation
     }
 
     internal static string FormatRate(int rate) => (rate / 1000.0).ToString("0.###", CultureInfo.InvariantCulture) + " kHz";
+
+    internal static string FormatRate(int rate, int? bits) => bits is > 0 and <= 64
+        ? $"{bits}-bit / {FormatRate(rate)}" : FormatRate(rate);
 
     private static bool IsCurrentStream(PlatformAudioSource source, SourceSettings settings,
         RateObservation? observation) => settings.StreamRateDetectionEnabled

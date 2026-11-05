@@ -11,6 +11,20 @@ public sealed class EndpointFormatSupportTests
     private static readonly Guid PcmSubFormat = new("00000001-0000-0010-8000-00AA00389B71");
 
     [Fact]
+    public void AppleSixteenBitPreferenceRequiresAnExactProbedExtensibleFormat()
+    {
+        var target = new AudioFormatCandidate(44100, 16, 2);
+        var legacy = EndpointFormatSupport.CreateDescriptor(new WaveFormat(44100, 16, 2), EndpointFormatOrigin.ExclusiveProbe);
+        var extensible = EndpointFormatSupport.CreateDescriptor(new WaveFormatExtensible(44100, 16, 2), EndpointFormatOrigin.ExclusiveProbe);
+        var otherRate = EndpointFormatSupport.CreateDescriptor(new WaveFormatExtensible(48000, 16, 2), EndpointFormatOrigin.ExclusiveProbe);
+
+        Assert.Same(legacy, EndpointFormatSupport.SelectBestDescriptor([legacy, extensible], target, EndpointFormatKind.WaveFormatEx, null));
+        Assert.Same(extensible, EndpointFormatSupport.SelectExtensible16Bit([legacy, otherRate, extensible], target));
+        Assert.Null(EndpointFormatSupport.SelectExtensible16Bit([legacy, otherRate], target));
+        Assert.Null(EndpointFormatSupport.SelectExtensible16Bit([extensible with { Origin = EndpointFormatOrigin.PropertyStore }], target));
+    }
+
+    [Fact]
     public void CreateProbeFormats_24Bit_IncludesPaddedContainerVariant()
     {
         // USB Audio Class 2 DACs (FiiO K11/KA11, JDS Atom DAC+) only accept 24-bit audio as

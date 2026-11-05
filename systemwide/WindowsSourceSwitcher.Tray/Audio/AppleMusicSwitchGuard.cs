@@ -22,6 +22,7 @@ internal sealed class AppleMusicSwitchGuard(
 {
     internal static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(60);
     internal static readonly TimeSpan StartupTimeout = TimeSpan.FromMilliseconds(1500);
+    internal static readonly TimeSpan SilentDescriptorRepairDelay = TimeSpan.FromMilliseconds(300);
     internal static readonly TimeSpan HealthyConfirmation = TimeSpan.FromMilliseconds(120);
     internal static readonly TimeSpan TimelineConfirmation = TimeSpan.FromMilliseconds(150);
     internal static readonly TimeSpan RebuildTimeout = TimeSpan.FromSeconds(6);
@@ -30,7 +31,7 @@ internal sealed class AppleMusicSwitchGuard(
     public async Task<AppleSwitchResult> RunAsync(IAppleSwitchSession? session, Func<bool> contextCurrent,
         Func<bool?> renderActive, Func<float?> signalPeak, Func<ApplyResult?> apply, CancellationToken cancellationToken,
         Action? formatConfirmed = null, bool allowSilentDepthIncrease = false, Func<ApplyResult?>? restorePrevious = null,
-        Func<ApplyResult?>? recoverSilent = null)
+        Func<ApplyResult?>? recoverSilent = null, bool repairSameDepth = false)
     {
         if (session is null) return new(null, "Apple Music session unavailable; output held.", false, true);
         var watch = Stopwatch.StartNew();
@@ -59,6 +60,12 @@ internal sealed class AppleMusicSwitchGuard(
                 if (HasLiveSignal(active, peak)) healthySince ??= Now();
                 else healthySince = null;
                 if (healthySince is { } healthy && Now() - healthy >= HealthyConfirmation) break;
+                if (repairSameDepth && recoverSilent is not null && silentThroughout
+                    && Now() - since >= SilentDescriptorRepairDelay && TimelineAdvanced(original.Position, state.Position))
+                {
+                    recoveringSilence = true;
+                    break;
+                }
                 if (Now() - since >= StartupTimeout)
                 {
                     if ((!allowSilentDepthIncrease && recoverSilent is null) || !silentThroughout || !TimelineAdvanced(original.Position, state.Position))

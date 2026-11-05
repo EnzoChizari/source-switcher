@@ -1119,6 +1119,9 @@ internal sealed class TrayContext : ApplicationContext
                 && snapshot.Formats.Any(format => format.SampleRateHz == desired && format.BitDepth == 24
                     && format.Channels == currentFormat.Channels);
             var sourceBits = useCompatible24 ? 24 : trackBits;
+            var preferAppleExtensible16 = appleSource is not null && (sourceBits ?? currentFormat.BitsPerSample) == 16
+                && _endpoint.SupportsExtensible16BitFormat(endpointId, new(desired, 16, currentFormat.Channels));
+            var repairApple16 = guardAppleWrite && preferAppleExtensible16 && snapshot.UsesLegacy16Bit;
             var recoveryProbeKey = guardAppleWrite && currentFormat.BitsPerSample == 16 && !decision.ManualBitDepth
                 && _settings.FollowSourceBitDepth && sourceFormatKnown && sourceBits is null or 16 && appleTrack is not null
                 ? $"{endpointId}|{appleSource!.SessionToken}|{appleTrack.Value.Track.UniqueKey}|{desired}" : null;
@@ -1134,7 +1137,7 @@ internal sealed class TrayContext : ApplicationContext
                     && format.Channels == currentFormat.Channels);
             var requireExactDepth = decision.ManualBitDepth || automaticAppleReduction;
             var preventDepthReduction = appleSource is not null && !requireExactDepth;
-            if (coldFallback is null && snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
+            if (!repairApple16 && coldFallback is null && snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
                 && (sourceBits is null || snapshot.Current.BitDepth == sourceBits
                     || preventDepthReduction && snapshot.Current.BitDepth > sourceBits))
             {
@@ -1170,7 +1173,7 @@ internal sealed class TrayContext : ApplicationContext
             };
             var depthFallback = trackBits is { } bits && bits != target.BitsPerSample
                 ? $" {depthEvidence} is {bits}-bit. Output uses {target.BitsPerSample}-bit at this rate." : "";
-            if (coldFallback is null && snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
+            if (!repairApple16 && coldFallback is null && snapshot.Current.SampleRateHz == desired && snapshot.Mix.SampleRateHz == desired
                 && snapshot.Current.BitDepth == target.BitsPerSample)
             {
                 _status += depthFallback;
@@ -1251,6 +1254,22 @@ internal sealed class TrayContext : ApplicationContext
                 && _monitor?.IsEvidenceCurrent(reported.Generation, appleSource.Identity, appleSource.SessionToken, 0, reported.Track) == true;
             var result = await Task.Run<ApplyResult?>(async () =>
             {
+                var adapter = new EndpointRateAdapter(_endpoint);
+                ApplyResult ApplyFormat()
+                {
+                    if (!preferAppleExtensible16 || target.BitsPerSample != 16 || !repairApple16 && target == currentFormat)
+                        return EndpointRateApplier.Apply(adapter, endpointId, desired, sourceBits, requireExactDepth, preventDepthReduction);
+                    if (adapter.ReadDeviceFormat(endpointId) != currentFormat)
+                        return new(false, false, "Output format changed before the 16-bit write.");
+                    var selected = new AudioFormatCandidate(desired, 16, target.Channels);
+                    if (!_endpoint.TryApplyExtensible16BitFormat(endpointId, selected, out var written, out var failure))
+                        return new(false, written, failure);
+                    var confirmed = adapter.ReadDeviceFormat(endpointId) == target
+                        && adapter.ReadMixFormat(endpointId)?.SampleRateHz == desired;
+                    return confirmed
+                        ? new(true, true, $"Confirmed {desired} Hz / 16-bit using the extensible PCM format.")
+                        : new(false, true, "The shared output did not confirm the requested extensible 16-bit format.");
+                }
                 if (_exiting || epoch != Volatile.Read(ref _epoch)) return null;
                 if (decision.Reason != RateDecisionReason.ManualOverride && !_playback.IsCurrent(playbackVersion)) return null;
                 if (_settings.BrowserRateDetectionEnabled
@@ -1273,7 +1292,7 @@ internal sealed class TrayContext : ApplicationContext
                     && (selectedKey is null || catalogSession is null
                         || _monitor?.IsEvidenceCurrent(catalogGeneration, selectedKey, catalogSession, 0) != true)) return null;
                 if (!guardAppleWrite)
-                    return EndpointRateApplier.Apply(new EndpointRateAdapter(_endpoint), endpointId, desired, sourceBits, requireExactDepth, preventDepthReduction);
+                    return ApplyFormat();
 
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_appleSwitchLifetime.Token);
                 deadline.CancelAfter(TimeSpan.FromSeconds(9));
@@ -1322,9 +1341,8 @@ internal sealed class TrayContext : ApplicationContext
                     catch (InvalidOperationException) { return false; }
                     return _applying && ready();
                 }
-                var adapter = new EndpointRateAdapter(_endpoint);
                 ApplyResult? ApplyApple() => BeginAppleWrite(AppleEvidenceCurrent, $"Applying {formatLabel}…")
-                    ? EndpointRateApplier.Apply(adapter, endpointId, desired, sourceBits, requireExactDepth, preventDepthReduction)
+                    ? ApplyFormat()
                     : null;
                 ApplyResult? RecoverApple()
                 {
@@ -1361,7 +1379,7 @@ internal sealed class TrayContext : ApplicationContext
                             }
                             catch (InvalidOperationException) { /* Closing or recreating the owned window. */ }
                         }, allowSilentDepthIncrease, automaticAppleReduction ? RestoreApple : null,
-                        coldFallback is null ? null : RecoverApple).ConfigureAwait(false);
+                        repairApple16 ? ApplyApple : coldFallback is null ? null : RecoverApple, repairApple16).ConfigureAwait(false);
                 return appleSwitch.Applied;
             });
             if (appleSwitch is not null)
@@ -1489,9 +1507,15 @@ internal sealed class TrayContext : ApplicationContext
         if (endpointId is null || devices.All(d => d.Id != endpointId))
             return new(devices, [], [], null, null, false, deviceError) { DeviceCensusError = deviceError };
         var sources = captureSources ? _enumerator.Enumerate(endpointId) : previous.Sources;
-        return new(devices, sources, captureSources ? _endpoint.GetSupportedFormats(endpointId, force) : previous.Formats,
-            _endpoint.GetCurrentDeviceFormat(endpointId), _endpoint.GetCurrentMixFormat(endpointId), true,
-            captureSources ? _enumerator.LastError : previous.Error) { DeviceCensusError = deviceError };
+        var formats = captureSources ? _endpoint.GetSupportedFormats(endpointId, force) : previous.Formats;
+        var current = _endpoint.GetCurrentDeviceFormat(endpointId);
+        return new(devices, sources, formats, current, _endpoint.GetCurrentMixFormat(endpointId), true,
+            captureSources ? _enumerator.LastError : previous.Error)
+        {
+            DeviceCensusError = deviceError,
+            UsesLegacy16Bit = current?.BitDepth == 16 && sources.Any(source => source.SupportsAutomaticRate)
+                && _endpoint.UsesLegacy16BitFormat(endpointId)
+        };
     }
 
     private void EnsureDeviceWatcher()
@@ -2105,5 +2129,6 @@ internal sealed class TrayContext : ApplicationContext
         bool TargetAvailable, string? Error)
     {
         public string? DeviceCensusError { get; init; }
+        public bool UsesLegacy16Bit { get; init; }
     }
 }

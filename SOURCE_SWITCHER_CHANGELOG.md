@@ -1,5 +1,11 @@
 # Source Switcher changelog
 
+## v1.4.4
+
+- Apple Music prefers the driver's extensible PCM format for 16-bit output. This preserves the actual 16-bit depth when the legacy format makes Apple Music silent.
+- If Apple Music is already silent on a legacy 16-bit output, Source Switcher can change the format description and keep the requested 16-bit depth. Other apps keep their existing format selection.
+- Sources show known bit depths before the sample rate, with the same evidence labels.
+
 ## v1.4.3
 
 - Apple Music can recover a silent 16-bit output by trying a higher supported depth while the track is still advancing. If silence persists after the change, Source Switcher can ask Apple Music once to reload its current playback position.

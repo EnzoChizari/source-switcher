@@ -138,6 +138,26 @@ public sealed class AppleMusicSwitchGuardTests
     }
 
     [Fact]
+    public async Task ConfirmedSilentLegacyDescriptorCanBeRepairedWithoutWaitingForTheDepthFallback()
+    {
+        var clock = new Clock();
+        TimeSpan? repairedAt = null;
+        var result = await clock.Guard.RunAsync(new Session(), () => true, () => true,
+            () => repairedAt.HasValue ? .1f : 0f, MustNotWrite, default,
+            recoverSilent: () => { repairedAt = clock.Elapsed; return Applied; }, repairSameDepth: true);
+        Assert.Equal(AppleMusicSwitchGuard.SilentDescriptorRepairDelay, repairedAt);
+        Assert.True(result.PlaybackObserved);
+    }
+
+    [Fact]
+    public async Task DescriptorRepairNeedsAnAdvancingTrack()
+    {
+        var result = await new Clock().Guard.RunAsync(new Session { Advance = false }, () => true, () => true,
+            () => 0f, MustNotWrite, default, recoverSilent: MustNotWrite, repairSameDepth: true);
+        Assert.True(result.WaitingForSignal);
+    }
+
+    [Fact]
     public async Task FailedDepthReductionRestoresOnceWhileTheOriginalTrackStillPlays()
     {
         var wrote = false;
