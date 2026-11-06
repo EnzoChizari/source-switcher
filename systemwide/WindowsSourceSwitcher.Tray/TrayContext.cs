@@ -945,6 +945,17 @@ internal sealed class TrayContext : ApplicationContext
             EnsureDeviceWatcher();
             var epoch = _epoch;
             var endpointId = _settings.TargetEndpointId;
+            if (captureSources && endpointId is not null)
+            {
+                var resolved = await Task.Run(() => _endpoint.ResolveManagedEndpointId(endpointId));
+                if (_exiting || epoch != _epoch) return;
+                if (!StringComparer.OrdinalIgnoreCase.Equals(resolved, endpointId))
+                {
+                    Log("Rebound the same Revolution hardware and logical output after a driver endpoint restart.", "Output");
+                    SelectOutput(resolved);
+                    return;
+                }
+            }
             var force = _reprobe || !_targetWasAvailable;
             _reprobe = false;
             // Subscribe to formats before the potentially expensive first device probe.
@@ -1378,10 +1389,10 @@ internal sealed class TrayContext : ApplicationContext
                 using var liveReader = new AppleMusicRenderProbe();
                 AppleRenderObservation live = new(null, null);
                 bool ContextCurrent() => appleContextCurrent!();
-                float? Peak() { live = liveReader.Read(endpointId, selectedKey!); return live.Peak; }
+                float? Peak() { live = liveReader.Read(_endpoint.ResolveManagedEndpointId(endpointId), selectedKey!); return live.Peak; }
                 if (waitingForAppleSignal)
                 {
-                    var signal = liveReader.Read(endpointId, selectedKey!);
+                    var signal = liveReader.Read(_endpoint.ResolveManagedEndpointId(endpointId), selectedKey!);
                     if (!AppleMusicSwitchGuard.ShouldRecheckSignal(signal, canRecoverSilent))
                     {
                         appleSwitch = new(null, AppleMusicSwitchGuard.WaitingForSignalStatus, false, true, WaitingForSignal: true);

@@ -77,6 +77,7 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
 
     public AudioFormatCandidate? GetCurrentMixFormat(string deviceId)
     {
+        deviceId = ResolveManagedEndpointId(deviceId);
         try
         {
             var mixFormat = OwnedEndpointAccess.GetMixFormat(deviceId);
@@ -329,22 +330,33 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
             else descriptor = GetDescriptor(deviceId, format, out descriptorSelectionDiagnostics);
             if (descriptor is null)
             {
-                CacheApplyDiagnostics(deviceId, $"Unsupported target {format.DisplayName}: not proven settable by exclusive-mode probing.");
-                failureReason = $"Target format {format.DisplayName} is not proven settable by exclusive-mode probing.";
+                CacheApplyDiagnostics(deviceId, $"Unsupported target {format.DisplayName}: not advertised by endpoint probing or its driver.");
+                failureReason = $"Target format {format.DisplayName} is not advertised by endpoint probing or its driver.";
                 return false;
             }
 
             beforeFormat = GetCurrentDeviceFormat(deviceId);
-            PolicyConfigInterop.SetDeviceFormat(deviceId, descriptor.NativeFormat);
+            if (descriptor.Origin == EndpointFormatOrigin.DriverApi)
+            {
+                using var device = GetDevice(deviceId);
+                if (!RevolutionDeviceController.TrySet(device, descriptor.Format, out failureReason))
+                {
+                    CacheApplyDiagnostics(deviceId, failureReason);
+                    return false;
+                }
+            }
+            else PolicyConfigInterop.SetDeviceFormat(deviceId, descriptor.NativeFormat);
             writeAccepted = true;
             // Verify against the descriptor's own candidate: the legacy container-bits fallback
             // can select a descriptor whose valid-bits depth differs from the requested format,
             // and the device reports the descriptor's depth afterwards.
             var verification = EndpointFormatSupport.VerifyTargetFormat(
                 descriptor.Format,
-                VerificationAttempts,
-                VerificationRetryDelay,
-                () => ReadCurrentDeviceFormatSnapshot(deviceId, requireExtensible16Bit),
+                descriptor.Origin == EndpointFormatOrigin.DriverApi ? 30 : VerificationAttempts,
+                descriptor.Origin == EndpointFormatOrigin.DriverApi ? TimeSpan.FromMilliseconds(100) : VerificationRetryDelay,
+                () => descriptor.Origin == EndpointFormatOrigin.DriverApi && GetCurrentMixFormat(deviceId)?.SampleRateHz != descriptor.Format.SampleRateHz
+                    ? new DeviceFormatSnapshot(null, null)
+                    : ReadCurrentDeviceFormatSnapshot(deviceId, requireExtensible16Bit),
                 Thread.Sleep);
 
             verifiedDeviceFormat = verification.VerifiedFormat;
@@ -358,7 +370,7 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
             if (!verification.Success)
             {
                 failureReason =
-                    $"SetDeviceFormat using {descriptor.Kind} did not update the shared device format. " +
+                    $"Format change using {descriptor.Kind} via {descriptor.Origin} did not update the shared device format. " +
                     diagnostics;
                 return false;
             }
@@ -381,8 +393,10 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
     private static MMDevice GetDevice(string deviceId)
     {
         using var enumerator = new MMDeviceEnumerator();
-        return enumerator.GetDevice(deviceId);
+        return enumerator.GetDevice(RevolutionDeviceController.ResolveEndpoint(deviceId));
     }
+
+    public string ResolveManagedEndpointId(string deviceId) => RevolutionDeviceController.ResolveEndpoint(deviceId);
 
     private EndpointFormatDescriptor? GetDescriptor(string deviceId, AudioFormatCandidate format, out string diagnostics)
     {
@@ -443,6 +457,12 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
         using var device = GetDevice(deviceId);
         using var client = device.AudioClient;
         var currentDeviceFormat = TryReadCurrentPropertyStoreDescriptor(deviceId);
+        if (RevolutionDeviceController.TryRead(device, out var clock, out var driverError) && currentDeviceFormat is not null)
+        {
+            var driverFormats = RevolutionDeviceController.BuildFormats(currentDeviceFormat, clock!.Rates);
+            CacheProbeDiagnostics(deviceId, $"Black Lion Revolution driver API; hardware={clock.Rate} Hz; fixedDepth={currentDeviceFormat.Format.BitDepth}; rates=[{string.Join(" ", clock.Rates)}]. All Revolution outputs share this clock.");
+            return driverFormats;
+        }
         var channels = currentDeviceFormat?.Format.Channels ?? client.MixFormat.Channels;
 
         var probeCount = 0;
@@ -480,7 +500,8 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
             CandidateDepths,
             RecordingIsSupported);
 
-        CacheProbeDiagnostics(deviceId, BuildProbeDiagnostics(currentDeviceFormat, channels, probeCount, acceptedCount, errorCounts, descriptors));
+        CacheProbeDiagnostics(deviceId, BuildProbeDiagnostics(currentDeviceFormat, channels, probeCount, acceptedCount, errorCounts, descriptors)
+            + (string.IsNullOrEmpty(driverError) ? string.Empty : " " + driverError));
         return descriptors;
     }
 
@@ -528,6 +549,7 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
 
     private DeviceFormatSnapshot ReadCurrentDeviceFormatSnapshot(string deviceId, bool requireExtensible16Bit = false)
     {
+        deviceId = ResolveManagedEndpointId(deviceId);
         AudioFormatCandidate? propertyStoreFormat = null;
         AudioFormatCandidate? policyConfigFormat = null;
 
@@ -570,6 +592,7 @@ public sealed class CoreAudioEndpointController : IAudioEndpointController
 
     private EndpointFormatDescriptor? TryReadCurrentPropertyStoreDescriptor(string deviceId)
     {
+        deviceId = ResolveManagedEndpointId(deviceId);
         try
         {
             var blob = OwnedEndpointAccess.ReadDeviceFormatBlob(deviceId);

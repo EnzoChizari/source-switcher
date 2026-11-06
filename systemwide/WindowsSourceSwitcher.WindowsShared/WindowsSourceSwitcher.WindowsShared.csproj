@@ -41,5 +41,6 @@
     <Compile Include="../../src/Services/FormatCacheStore.cs" Link="Upstream/Services/FormatCacheStore.cs" />
     <Compile Include="../../src/Services/OwnedEndpointAccess.cs" Link="Upstream/Services/OwnedEndpointAccess.cs" />
     <Compile Include="../../src/Services/PolicyConfigInterop.cs" Link="Upstream/Services/PolicyConfigInterop.cs" />
+    <Compile Include="../../src/Services/RevolutionDeviceController.cs" Link="Upstream/Services/RevolutionDeviceController.cs" />
   </ItemGroup>
 </Project>

@@ -26,6 +26,7 @@ internal enum EndpointFormatOrigin
 {
     PropertyStore,
     ExclusiveProbe,
+    DriverApi,
 }
 
 internal sealed record EndpointFormatDescriptor(
