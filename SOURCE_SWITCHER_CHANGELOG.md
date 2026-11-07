@@ -1,12 +1,5 @@
 # Source Switcher changelog
 
-## v1.5.0
-
-- Added Black Lion Audio Revolution 2x2 support using its installed Windows driver API. Discover and select the driver's 44.1, 48, 88.2, 96, 176.4 and 192 kHz rates instead of being limited to the current WDM rate.
-- Verify the hardware clock and Windows mixer after a change. Recover the same physical device and logical output when the driver recreates Windows endpoints. Ambiguous or different devices are never selected by name alone.
-- Preserve the driver's supported PCM precision (24-bit on the tested 5.72 driver). Automatic bit depth cannot add unsupported 16- or 32-bit output modes. All Revolution outputs share one hardware clock; changes can briefly interrupt playback and recording. ASIO/exclusive applications remain outside shared-mode control.
-- Requires the official Black Lion Audio driver in its standard installation folder; the vendor DLL is loaded only for driver queries/changes and is not bundled or modified. Tested with driver 5.72, API 5.13.
-
 ## v1.4.0
 
 - Improved Apple Music format identification and switching recovery, including compatible 16-bit output. Lossless details can be read automatically while Apple Music is in front. Catalog fallback remains an estimate.

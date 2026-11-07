@@ -63,17 +63,6 @@ Use SourceSwitcher:GitHub:EnzoChizari/source-switcher as the address,
 your GitHub username, and a repository-scoped Contents read token as the
 password. Keep the credential in Credential Manager on your PC.
 
-Black Lion Audio Revolution 2x2:
-Install the official Black Lion Audio Windows driver in its standard folder.
-Select Analog Out 1/2 (Revolution 2x2) as the output. Source Switcher uses the
-driver's own clock controls and reports only its supported rates and precision.
-Tested with driver 5.72 (API 5.13), 24-bit at 44.1 through 192 kHz.
-The driver can restart Windows outputs during a clock change; measured changes
-took approximately two seconds. Some players need playback restarted afterward.
-Analog and virtual outputs, recording and ASIO share the hardware clock.
-Turn off automatic switching while recording or using an ASIO/exclusive app.
-The official driver is required and is not included or modified by this ZIP.
-
 Optional Chrome / Helium support (version 119 or newer):
 In Settings > Browser integration, enable it and register the helper.
 At chrome://extensions, turn on Developer mode, Load unpacked, and choose
