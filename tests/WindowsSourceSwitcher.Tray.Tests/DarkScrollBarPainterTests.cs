@@ -8,6 +8,27 @@ namespace WindowsSourceSwitcher.Tray.Tests;
 
 public sealed class DarkScrollBarPainterTests
 {
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(1.25f)]
+    [InlineData(1.5f)]
+    public void SettingsScrollbarsRemainDarkAcrossWindowActivationCycles(float scale) => OnSta(() =>
+    {
+        if (SystemInformation.HighContrast) return;
+        using var owner = new Form { ClientSize = new Size((int)(500 * scale), (int)(340 * scale)), ShowInTaskbar = false };
+        using var font = new Font(owner.Font.FontFamily, 9 * scale);
+        owner.Font = font;
+        var settings = new ControlsSettingsView(); owner.Controls.Add(settings);
+        MinimalDarkTheme.Apply(owner); owner.Show(); Application.DoEvents();
+        using var other = new Form { ShowInTaskbar = false, ClientSize = new Size(120, 80) };
+        other.Show();
+        for (var cycle = 0; cycle < 3; cycle++)
+        {
+            other.Activate(); Application.DoEvents(); owner.Activate(); Application.DoEvents();
+            AssertDarkBars(settings, -5);
+        }
+        owner.Close(); Application.DoEvents(); // A queued activation refresh must tolerate disposal.
+    });
     [Fact]
     public void NativeVerticalAndHorizontalBarsPaintDarkAndStillScroll() => OnSta(() =>
     {

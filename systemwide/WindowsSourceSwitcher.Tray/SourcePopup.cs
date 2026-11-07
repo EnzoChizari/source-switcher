@@ -17,6 +17,7 @@ internal sealed class SourcePopup : Form
     private readonly Label _format = new() { AutoSize = true, Text = "Output: choose a Windows playback device" };
     private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(430, 0), Text = "Select an output, then an app playing on it." };
     private readonly Label _evidence = new() { AutoSize = true, MaximumSize = new Size(430, 0), Text = "Select an app to see its detection support and saved target." };
+    private readonly Label _prioritySummary = new() { AutoSize = true, Dock = DockStyle.Top, ForeColor = Color.DimGray };
     private readonly CheckBox _enabled = new MinimalCheckBox() { AutoSize = true, Text = "Enable switching", Checked = true };
     private readonly CheckBox _catalog = new MinimalCheckBox() { AutoSize = true, KeepPaletteDuringFormatChange = true,
         Text = "Use Apple Music track format (catalog fallback)" };
@@ -215,8 +216,7 @@ internal sealed class SourcePopup : Form
         actionCard.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         actionCard.Padding = new Padding(12, 6, 12, 6);
         actionCard.Controls.Add(actions);
-        layout.Controls.Add(new Label { AutoSize = true, Dock = DockStyle.Top, ForeColor = Color.DimGray,
-            Text = "Priority: fullscreen → favorites → pinned → regular apps." }, 0, 4);
+        layout.Controls.Add(_prioritySummary, 0, 4);
         var sourceViewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
         sourceViewport.Controls.Add(layout);
         _sourcesTab.Controls.Add(sourceViewport);
@@ -471,6 +471,9 @@ internal sealed class SourcePopup : Form
         try
         {
             _controls.Render(settings.GlobalHotkeysEnabled, settings.BrowserRateDetectionEnabled, settings.FavoriteAutoSwitchEnabled, settings.FullscreenAutoSwitchEnabled);
+            _prioritySummary.Text = settings.FullscreenAutoSwitchEnabled
+                ? "Priority: fullscreen → favorites → pinned → regular apps."
+                : "Priority: favorites → pinned → regular apps.";
             if (!ReferenceEquals(_capabilityFormats, formats) || _capabilityChannels != current?.Channels)
             {
                 _capabilityFormats = formats;

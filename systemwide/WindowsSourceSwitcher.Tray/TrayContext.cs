@@ -159,6 +159,11 @@ internal sealed class TrayContext : ApplicationContext
         menu.Items.Add("Open", null, (_, _) => _popup.ShowAtTray());
         menu.Items.Add("Volume mixer", null, (_, _) => { _popup.SelectMixerTab(); _popup.ShowAtTray(); });
         menu.Items.Add("Quick tour", null, (_, _) => ShowTutorial());
+        var startup = new StartupMenuItem(menu,
+            new WindowsStartupRegistration(Environment.ProcessPath ?? throw new InvalidOperationException("Application path is unavailable.")),
+            error => { if (!_exiting) MessageBox.Show(error, Program.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Warning); });
+        menu.Items.Add(startup.Item);
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, async (_, _) => await ShutdownAsync());
         MinimalDarkTheme.Apply(menu);
         _icon.ContextMenuStrip = menu;
@@ -2219,6 +2224,7 @@ internal sealed class TrayContext : ApplicationContext
             _meters?.Dispose();
             _enumerator.Dispose();
             _volumes.Dispose();
+            _icon.ContextMenuStrip?.Dispose();
             _icon.Dispose();
             _trayArtwork?.Dispose();
             _popup.Dispose();

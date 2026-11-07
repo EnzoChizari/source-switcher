@@ -12,6 +12,20 @@ namespace WindowsSourceSwitcher.Tray.Tests;
 public sealed class SourcePopupLayoutTests
 {
     [Fact]
+    public void PrioritySummaryTracksFullscreenSettingInBothDirections() => OnSta(() =>
+    {
+        using var popup = new SourcePopup();
+        var settings = new SourceSettings();
+        foreach (var enabled in new[] { false, true, false })
+        {
+            settings.FullscreenAutoSwitchEnabled = enabled;
+            popup.Render([], [], [], null, settings, "Status", "Evidence", false);
+            var label = Find<Label>(popup).Single(value => value.Text.StartsWith("Priority:"));
+            Assert.Equal(enabled ? "Priority: fullscreen → favorites → pinned → regular apps."
+                : "Priority: favorites → pinned → regular apps.", label.Text);
+        }
+    });
+    [Fact]
     public void EnlargedStartupTextFitsOutputSummaryAndSourceControls() => OnSta(() =>
     {
         using var popup = new SourcePopup { Opacity = 0 };

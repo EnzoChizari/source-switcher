@@ -42,7 +42,9 @@ for your selected output. The maximum is a capability, not a playback target.
 
 One left click on the tray icon reopens the app. Closing the window hides it.
 Right-click the tray icon and choose Exit to stop the controller. Settings are
-saved per Windows user. To launch hidden, use --background in your shortcut.
+saved per Windows user. Right-click the tray icon and check Start with Windows
+to start minimized when you sign in; uncheck it to disable startup. Existing
+login-task permissions are preserved. To launch hidden yourself, use --background.
 
 Updates: Source Switcher checks GitHub at startup and every 30 minutes while
 running. Open Settings >

@@ -16,6 +16,9 @@ Use the self-contained release ZIP on a Windows x64 PC. The ZIP includes the .NE
 4. Start playback in a source app, then double-click its row in **Sources** to make it the master. The master is the app whose format drives the selected output.
 5. Leave the rate on **Auto** to follow the observed sample rate, or choose one of the rates supported by the selected output. Open **Diagnostics** to see the observed format and the controller's status.
 
+To start it automatically, right-click the tray icon and check **Start with Windows**.
+It starts minimized when you sign in. Uncheck the same item to disable automatic startup.
+
 ## Install the Chrome extension
 
 1. In Source Switcher, open **Settings → Browser integration**. Enable **Browser tab integration** and click **Register browser helper**.

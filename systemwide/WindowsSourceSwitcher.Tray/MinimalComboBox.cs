@@ -57,6 +57,11 @@ internal sealed class MinimalComboBox : ComboBox
             using var graphics = Graphics.FromHwnd(Handle);
             PaintChrome(graphics);
         }
+        else if (message.Msg is 0x0085 or 0x0007 or 0x0008 or 0x000A or 0x031A or 0x0128 or 0x02E3)
+        {
+            using var graphics = Graphics.FromHwnd(Handle);
+            PaintChrome(graphics);
+        }
         else if (message.Msg is 0x0317 or 0x0318 /* WM_PRINT / WM_PRINTCLIENT */ && message.WParam != IntPtr.Zero)
         {
             // DrawToBitmap/printing supplies its own HDC. Never substitute the screen DC.
@@ -74,9 +79,19 @@ internal sealed class MinimalComboBox : ComboBox
         var arrow = Rectangle.Intersect(ClientRectangle, Rectangle.FromLTRB(info.Button.Left, info.Button.Top, info.Button.Right, info.Button.Bottom));
         if (arrow.Width <= 0 || arrow.Height <= 0) return;
         // Use the native button's measured bounds: hit testing and RTL placement stay native.
-        var fillBounds = Rectangle.Intersect(ClientRectangle, Rectangle.Inflate(arrow, 1, 1));
+        var seam = Scale(2);
+        var fillBounds = arrow.Left > ClientSize.Width / 2
+            ? Rectangle.FromLTRB(Math.Max(0, Math.Min(arrow.Left, info.Item.Right) - seam), 0, ClientSize.Width, ClientSize.Height)
+            : Rectangle.FromLTRB(0, 0, Math.Min(ClientSize.Width, Math.Max(arrow.Right, info.Item.Left) + seam), ClientSize.Height);
         using var fill = new SolidBrush(Enabled && (_hovered || DroppedDown) ? MinimalDarkTheme.RaisedSurface : MinimalDarkTheme.Surface);
         graphics.FillRectangle(fill, fillBounds);
+        // Flat/native borders can occupy multiple physical pixels at higher DPI.
+        // Cover the complete old frame before drawing the single dark/amber edge.
+        using var surface = new SolidBrush(MinimalDarkTheme.Surface);
+        graphics.FillRectangle(surface, 0, 0, ClientSize.Width, seam);
+        graphics.FillRectangle(surface, 0, ClientSize.Height - seam, ClientSize.Width, seam);
+        graphics.FillRectangle(surface, 0, 0, seam, ClientSize.Height);
+        graphics.FillRectangle(surface, ClientSize.Width - seam, 0, seam, ClientSize.Height);
         var centerX = arrow.Left + arrow.Width / 2;
         var centerY = arrow.Top + arrow.Height / 2;
         graphics.SmoothingMode = SmoothingMode.AntiAlias;

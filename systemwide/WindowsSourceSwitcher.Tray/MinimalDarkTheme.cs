@@ -39,6 +39,14 @@ internal static class MinimalDarkTheme
             root.HandleCreated += HandleCreated;
             root.HandleDestroyed += HandleDestroyed;
             root.Disposed += ControlDisposed;
+            if (root is Form window)
+            {
+                window.Activated += WindowChromeChanged;
+                window.Deactivate += WindowChromeChanged;
+                window.EnabledChanged += WindowChromeChanged;
+                window.Shown += WindowChromeChanged;
+                window.DpiChanged += WindowChromeChanged;
+            }
             if (root is ComboBox combo) combo.DrawItem += DrawComboItem;
             if (root is ListView list)
             {
@@ -168,7 +176,8 @@ internal static class MinimalDarkTheme
         TextRenderer.DrawText(args.Graphics, text, args.Font ?? combo.Font, bounds,
             !combo.Enabled ? MutedText : selected ? SelectedText : Text,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        if ((args.State & DrawItemState.Focus) != 0) args.DrawFocusRectangle();
+        if ((args.State & DrawItemState.Focus) != 0 && (SystemInformation.HighContrast || combo is not MinimalComboBox))
+            args.DrawFocusRectangle(); // MinimalComboBox has its own amber keyboard-focus edge.
     }
 
     private static void DrawListHeader(object? sender, DrawListViewColumnHeaderEventArgs args)
@@ -214,12 +223,52 @@ internal static class MinimalDarkTheme
     private sealed class Attachment
     {
         public bool Wired;
+        public bool ChromeQueued;
         public DarkScrollBarPainter? ScrollBars;
         public DarkListHeader? Header;
     }
 
+    private static void WindowChromeChanged(object? sender, EventArgs args)
+    {
+        if (sender is not Form form || form.IsDisposed || !form.IsHandleCreated || SystemInformation.HighContrast) return;
+        var state = Attachments.GetValue(form, static _ => new Attachment());
+        if (state.ChromeQueued) return;
+        state.ChromeQueued = true;
+        try
+        {
+            // Native activation can repaint descendant nonclient areas after Activated
+            // fires, without sending those children a focus/paint message. Repaint once
+            // after that activation finishes, without polling or continuous invalidation.
+            form.BeginInvoke(new Action(() =>
+            {
+                state.ChromeQueued = false;
+                if (!form.IsDisposed && form.IsHandleCreated) RefreshChrome(form);
+            }));
+        }
+        catch (InvalidOperationException) { state.ChromeQueued = false; }
+    }
+
+    private static void RefreshChrome(Control control)
+    {
+        if (control.IsDisposed) return;
+        if (Attachments.TryGetValue(control, out var state)) state.ScrollBars?.Redraw();
+        if (control is MinimalComboBox) control.Invalidate();
+        foreach (Control child in control.Controls) RefreshChrome(child);
+    }
+
     private sealed class DarkToolStripRenderer() : ToolStripProfessionalRenderer(new DarkColors())
     {
+        protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs args)
+        {
+            if (SystemInformation.HighContrast) { base.OnRenderItemCheck(args); return; }
+            var box = args.ImageRectangle;
+            using var background = new SolidBrush(args.Item.Selected ? SelectedSurface : Surface);
+            args.Graphics.FillRectangle(background, box);
+            using var pen = new Pen(Accent, Math.Max(1.5f, box.Height / 9f));
+            args.Graphics.DrawLines(pen, new[] { new PointF(box.Left + box.Width * .18f, box.Top + box.Height * .5f),
+                new PointF(box.Left + box.Width * .4f, box.Top + box.Height * .74f),
+                new PointF(box.Left + box.Width * .83f, box.Top + box.Height * .22f) });
+        }
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs args)
         {
             args.TextColor = args.Item.Enabled ? Text : MutedText;

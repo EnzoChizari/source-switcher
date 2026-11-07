@@ -1,5 +1,12 @@
 # Source Switcher changelog
 
+## v1.4.1
+
+- Added **Start with Windows** to the tray icon's right-click menu. Its checkmark reads the actual login task state; changing it takes effect for the current Windows user and starts the app minimized. Existing task permissions are preserved.
+- The Sources priority summary includes fullscreen only while fullscreen app priority is enabled.
+- Removed light native dropdown separator/frame remnants, including focus changes and scaled layouts. Keyboard focus remains visible with an amber edge.
+- Refresh dark scrollbars after window activation, deactivation, modal enablement and DPI/theme changes, fixing white tracks appearing after returning to the app. Refreshes are event-driven and coalesced; no background polling was added.
+
 ## v1.4.0
 
 - Improved Apple Music format identification and switching recovery, including compatible 16-bit output. Lossless details can be read automatically while Apple Music is in front. Catalog fallback remains an estimate.

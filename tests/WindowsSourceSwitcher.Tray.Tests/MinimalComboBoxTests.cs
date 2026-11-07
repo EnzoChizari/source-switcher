@@ -8,6 +8,36 @@ namespace WindowsSourceSwitcher.Tray.Tests;
 
 public sealed class MinimalComboBoxTests
 {
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(1.25f)]
+    [InlineData(1.5f)]
+    public void FocusCyclesLeaveNoWhiteSeparatorAtScaledSizes(float scale) => OnSta(() =>
+    {
+        if (SystemInformation.HighContrast) return;
+        using var form = new Form { ShowInTaskbar = false };
+        using var font = new Font(form.Font.FontFamily, 9 * scale);
+        using var combo = new MinimalComboBox { Width = (int)(260 * scale), Font = font };
+        using var other = new Button { Top = 70, Text = "Other" };
+        combo.Items.Add("Automatic"); combo.SelectedIndex = 0;
+        form.Controls.AddRange([combo, other]); form.Show();
+        for (var cycle = 0; cycle < 3; cycle++)
+        {
+            other.Focus(); Application.DoEvents(); combo.Focus(); Application.DoEvents();
+            using var bitmap = new Bitmap(combo.Width, combo.Height);
+            combo.DrawToBitmap(bitmap, combo.ClientRectangle);
+            var info = new ComboInfo { Size = Marshal.SizeOf<ComboInfo>() };
+            Assert.True(GetComboBoxInfo(combo.Handle, ref info));
+            for (var x = Math.Max(1, info.Button.Left - (int)Math.Ceiling(2 * scale)); x <= info.Button.Left + 1; x++)
+                for (var y = 2; y < combo.Height - 2; y++)
+                {
+                    var color = bitmap.GetPixel(x, y);
+                    Assert.False(color.R > 220 && color.G > 220 && color.B > 220, $"White separator at {scale}, {x},{y}.");
+                }
+        }
+        Assert.Equal(0, combo.SelectedIndex);
+    });
+
     [Fact]
     public void Rendering_dark_native_combo_preserves_selection_accessibility_and_handle() => OnSta(() =>
     {
@@ -93,6 +123,10 @@ public sealed class MinimalComboBoxTests
 
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+    [StructLayout(LayoutKind.Sequential)] private struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct ComboInfo
+    { public int Size; public Rect Item, Button; public uint State; public IntPtr Combo, ItemWindow, ListWindow; }
+    [DllImport("user32.dll")] private static extern bool GetComboBoxInfo(IntPtr window, ref ComboInfo info);
 
     private static void OnSta(Action action)
     {
